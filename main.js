@@ -46,20 +46,19 @@ function activarTiempoReal() {
         .channel('cambios-tickets-global')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'tickets' }, async (payload) => {
             console.log("Cambio detectado en tiempo real en la base de datos:", payload);
-            // Volvemos a sincronizar la memoria local de manera silenciosa
+            
+            // 1. Sincronizamos los datos de la nube a la memoria local
             await recuperarBandejaSeguraSilencioso();
             
-            // Si el usuario está viendo la bandeja de tickets o el dashboard, refrescamos la vista actual
+            // 2. FORZAMOS EL REFRESCO VISUAL
+            // Validamos si el usuario está en la bandeja de tickets para redibujar la tabla inmediatamente
             const contenedorTickets = document.getElementById("table-tickets-body");
-            const contenedorGraficas = document.getElementById("graficaEstatus");
-            
             if (contenedorTickets) {
-                renderizarBandejaTickets();
-            } else if (contenedorGraficas) {
-                renderizarDashboardAnalitica();
+                console.log("🔄 Redibujando la bandeja de tickets automáticamente...");
+                recuperarBandejaSegura(); // O la función que procesa el arreglo y pinta la tabla
+                renderizarBandejaTickets(); 
             }
-        })
-        .subscribe();
+        });
 }
 
 // Función conectada a Supabase para recuperar la bandeja de entrada
