@@ -629,11 +629,10 @@ async function renderizarBandejaTickets() {
     const mainContent = document.getElementById("main-content");
     if (!mainContent) return;
 
-    // 1. Traer datos frescos y mapear respetando las columnas físicas de Supabase
+    // 1. Traer datos frescos de la nube
     await recuperarBandejaSegura();
 
-// 2. REFRESCO VISUAL FORZADO: Limpiamos y repintamos la tabla inmediatamente
-    
+    // 2. Construcción de barra de navegación dinámica según rol
     let botonVolver = "";
     let botonDash = `<button id="btn-nav-dash-analista" class="btn-primary" style="background-color: var(--verde-exito); border: none; padding: 8px 16px; border-radius: 6px; color: var(--azul-corporativo); cursor: pointer; font-weight: 700; margin-right: 10px;">📈 Dashboard</button>`;
     
@@ -694,6 +693,7 @@ async function renderizarBandejaTickets() {
         </div>
     `;
 
+    // Asignación de manejadores de navegación segura
     if (usuarioLogueado === "admin") {
         document.getElementById("btn-volver-admin").addEventListener("click", inicializarModuloCarga);
         document.getElementById("btn-nav-dash-analista").addEventListener("click", renderizarDashboardAnalitica);
@@ -716,11 +716,10 @@ async function renderizarBandejaTickets() {
     let contFinalizados = 0;
 
     bandejaTickets.forEach((ticket) => {
-        // Homologación de mayúsculas/minúsculas para el conteo de los KPIs
-        const estatusUpper = String(ticket.estatusTicket).toUpperCase();
+        const estatusUpper = String(ticket.estatusTicket).toUpperCase().trim();
 
         if (estatusUpper === "PENDIENTE") contPendientes++;
-        if (estatusUpper === "CORREGIDO") contCorregidos++;
+        if (estatusUpper === "CORREGIDO" || estatusUpper === "NOTIFICADO") contCorregidos++;
         if (estatusUpper === "FINALIZADO") contFinalizados++;
 
         let estatusBadge = "";
@@ -737,7 +736,7 @@ async function renderizarBandejaTickets() {
             }
             auditoriaHtml = `<span style="color:#64748b; font-size:12px; font-style:italic;">Esperando corrección...</span>`;
         
-        } else if (estatusUpper === "CORREGIDO") {
+        } else if (estatusUpper === "CORREGIDO" || estatusUpper === "NOTIFICADO") {
             estatusBadge = `<span class="status-badge" style="background-color:#dbeafe; color:#2563eb; border-color:#bfdbfe; letter-spacing:0.5px; font-weight:700; text-transform:uppercase; padding:6px 12px; border-radius:20px; font-size:11px; border:1px solid transparent;">🔔 Notificado (Corregido)</span>`;
             
             if (usuarioLogueado === "analista") {
@@ -761,7 +760,7 @@ async function renderizarBandejaTickets() {
             }
         
         } else if (estatusUpper === "FINALIZADO") {
-            estatusBadge = `<span class="status-badge status-resuelto-corporativo">✓ Finalizado (Aprobado)</span>`;
+            estatusBadge = `<span class="status-badge status-resuelto-corporativo" style="background-color:#d1fae5; color:#065f46; padding:6px 12px; border-radius:20px; font-size:11px; font-weight:700;">✓ Finalizado (Aprobado)</span>`;
             accionesHtml = `<span style="font-size:12px; color:#097c47; font-weight:600;">Incidencia Cerrada</span>`;
             auditoriaHtml = `<span style="font-size:12px; font-weight:500; color:#334155;">Caso Aprobado. ${ticket.observacionAuditor ? `Obs: ${ticket.observacionAuditor}` : ''}</span>`;
         }
@@ -784,7 +783,7 @@ async function renderizarBandejaTickets() {
 
     updateKpi(contPendientes, contCorregidos, contFinalizados);
     configurarEventosTickets();
-} // AQUÍ CIERRA CORRECTAMENTE LA FUNCIÓN async function renderizarBandejaTickets()
+}
 
 function updateKpi(p, c, f) {
     const pend = document.getElementById("kpi-pendientes");
@@ -811,9 +810,7 @@ function configurarEventosTickets() {
 
             if (!error) {
                 alert(`¡Se ha actualizado el estatus a "Corregido" en la nube!`);
-                await recuperarBandejaSegura();
                 destruirGraficosDashboard();
-                renderizarDashboardAnalitica();
                 renderizarBandejaTickets();
             } else {
                 console.error(error);
@@ -827,7 +824,7 @@ function configurarEventosTickets() {
         button.addEventListener("click", async (e) => {
             const ticketId = e.target.getAttribute("data-id");
             const observacionInput = document.getElementById(`obs-${ticketId}`);
-            const observacion = observacionInput ? observacionInput.value : "";
+            const observacion = observacionInput ? observacionInput.value.trim() : "";
 
             const { error } = await supabase
                 .from('tickets')
@@ -839,9 +836,7 @@ function configurarEventosTickets() {
 
             if (!error) {
                 alert(`El ticket ${ticketId} ha sido auditado y cerrado en la nube.`);
-                await recuperarBandejaSegura();
                 destruirGraficosDashboard();
-                renderizarDashboardAnalitica();
                 renderizarBandejaTickets();
             } else {
                 alert("Error al finalizar el ticket.");
@@ -854,9 +849,9 @@ function configurarEventosTickets() {
         button.addEventListener("click", async (e) => {
             const ticketId = e.target.getAttribute("data-id");
             const observacionInput = document.getElementById(`obs-${ticketId}`);
-            const observacion = observacionInput ? observacionInput.value : "";
+            const observacion = observacionInput ? observacionInput.value.trim() : "";
 
-            if (observacion.trim() === "") {
+            if (observacion === "") {
                 alert("Para reabrir un caso, debe indicar una observación obligatoria explicando el motivo.");
                 return;
             }
@@ -871,9 +866,7 @@ function configurarEventosTickets() {
 
             if (!error) {
                 alert(`El ticket ${ticketId} ha sido reabierto.`);
-                await recuperarBandejaSegura();
                 destruirGraficosDashboard();
-                renderizarDashboardAnalitica();
                 renderizarBandejaTickets();
             } else {
                 alert("Error al reabrir el ticket.");
@@ -883,15 +876,13 @@ function configurarEventosTickets() {
 }
 
 // ==========================================
-// ==========================================
-// ==========================================
 // MÓDULO 4: DASHBOARD PREMIUM (LECTURA ACTUALIZADA)
 // ==========================================
 async function renderizarDashboardAnalitica() {
     // 1. Leemos los datos más recientes desde Supabase
     const { data: ticketsFrescos } = await supabase.from('tickets').select('*');
     
-    // 2. Sincronizamos la estructura local
+    // 2. Sincronizamos la estructura local mapeada
     bandejaTickets = (ticketsFrescos || []).map(t => ({
         id: t.ticket_id,
         comercio: t.nombre_comercio,
@@ -904,35 +895,49 @@ async function renderizarDashboardAnalitica() {
         observacionAuditor: t.auditoria_observacion
     }));
     
-    // 3. Cálculos independientes por cada métrica
+    // 3. Cálculos independientes por cada métrica corporativa
     const totalIncidentes = bandejaTickets.length;
     
-    // Casos Finalizados (Métrica 1)
     const totalFinalizados = bandejaTickets.filter(t => 
         String(t.estatusTicket).toUpperCase().trim() === "FINALIZADO"
     ).length;
 
-    // Casos Notificados / Corregidos (Métrica 2)
-    const totalNotificados = bandejaTickets.filter(t => 
-        String(t.estatusTicket).toUpperCase().trim().includes("CORREGIDO") ||
-        String(t.estatusTicket).toUpperCase().trim().includes("NOTIFICADO")
-    ).length;
+    const totalNotificados = bandejaTickets.filter(t => {
+        const est = String(t.estatusTicket).toUpperCase().trim();
+        return est.includes("CORREGIDO") || est.includes("NOTIFICADO");
+    }).length;
 
-    // Rechazos puros: el remanente que no está ni finalizado ni corregido
     const totalRechazosPuros = totalIncidentes - (totalFinalizados + totalNotificados);
 
     const conteoBancos = {};
     const conteoRechazos = {};
 
     bandejaTickets.forEach(ticket => {
+        // Sanear el Banco (Nota: El Banco NO altera la lógica del cruce, solo se visualiza en esta gráfica de barras)
         let bancoSaneado = ticket.banco ? ticket.banco.trim().toUpperCase() : "NO ESPECIFICADO";
         if (bancoSaneado === "SIN ASIGNAR" || bancoSaneado === "") {
             bancoSaneado = "NO ESPECIFICADO";
         }
         conteoBancos[bancoSaneado] = (conteoBancos[bancoSaneado] || 0) + 1;
 
+        // --- SISTEMA INTERNO DE CLASIFICACIÓN OPERATIVA (SANEADO SEGÚN REGLAS DE NEGOCIO) ---
         let motivoSaneado = "Otras Discrepancias";
-        if (/pareo|razón|social/i.test(ticket.motivo)) {
+        const motivoLower = String(ticket.motivo).toLowerCase();
+
+        // Regla 1: Reglas explícitas de Operadores (Movilnet, Movistar, Digitel)
+        if (motivoLower.includes("movilnet") || /895806/.test(motivoLower)) {
+            motivoSaneado = "Movilnet: No inicia con 895806";
+        } else if (motivoLower.includes("movistar") || /debe terminar en número/.test(motivoLower)) {
+            motivoSaneado = "Movistar: SIM no termina en número";
+        } else if (motivoLower.includes("digitel") || /debe terminar en letra/.test(motivoLower)) {
+            motivoSaneado = "Digitel: SIM no termina en letra";
+        } 
+        // Regla 2: Regla explícita del hardware NEW9220
+        else if (/9222/.test(motivoLower) || (String(ticket.modelo).toUpperCase().includes("NEW9220") && !String(ticket.serial).startsWith("9222"))) {
+            motivoSaneado = "NEW9220: Serial no inicia con 9222";
+        } 
+        // Regla 3: Otros problemas de integridad genéricos
+        else if (/pareo|razón|social/i.test(ticket.motivo)) {
             motivoSaneado = "Error de Pareo (Razón Social)";
         } else if (/obligatoriedad|serial vacío/i.test(ticket.motivo)) {
             motivoSaneado = "Serial Vacío o Nulo";
@@ -950,12 +955,12 @@ async function renderizarDashboardAnalitica() {
     const rechazosLabels = Object.keys(conteoRechazos);
     const rechazosData = Object.values(conteoRechazos);
 
-    // 4. Estructura HTML con tarjetas (KPIs) totalmente separadas
+    // 4. Estructura HTML con tarjetas KPIs separadas
     const htmlDashboard = `
         <div style="display:flex; flex-direction:column; gap:24px; font-family:'Inter', sans-serif;">
             <div class="upload-header" style="margin:0;">
                 <h2>📈 Dashboard y Analítica de Control Operativo</h2>
-                <p>Monitoreo gerencial en tiempo real conectado a Supabase.</p>
+                <p>Monitoreo gerencial en tiempo real conectado a Supabase con auditoría de Telcos.</p>
             </div>
             
             <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:20px;">
@@ -991,19 +996,9 @@ async function renderizarDashboardAnalitica() {
     `;
 
     renderizarEstructuraBasePortal(htmlDashboard);
+    destruirGraficosDashboard();
 
-    // 5. Destrucción segura de instancias previas de Chart.js
-    if (window.graficoIncidenciasInstance) {
-        window.graficoIncidenciasInstance.destroy();
-    }
-    if (window.graficoTopRechazosInstance) {
-        window.graficoTopRechazosInstance.destroy();
-    }
-    if (window.graficoVolumenBancosInstance) {
-        window.graficoVolumenBancosInstance.destroy();
-    }
-
-    // 6. Instanciación de la gráfica de dona con los tres universos separados
+    // 5. Instanciación segura de Gráficos de Control con Chart.js
     const ctxEstatus = document.getElementById('graficaEstatus').getContext('2d');
     window.graficoIncidenciasInstance = new Chart(ctxEstatus, {
         type: 'doughnut',
@@ -1026,7 +1021,7 @@ async function renderizarDashboardAnalitica() {
             labels: rechazosLabels.length > 0 ? rechazosLabels : ['Sin registros'],
             datasets: [{
                 data: rechazosData.length > 0 ? rechazosData : [0],
-                backgroundColor: ['#F59E0B', '#3B82F6', '#EF4444', '#8B5CF6', '#EC4899'],
+                backgroundColor: ['#F59E0B', '#3B82F6', '#EF4444', '#8B5CF6', '#EC4899', '#10D07A', '#F43F5E'],
                 borderWidth: 1
             }]
         },
@@ -1052,10 +1047,24 @@ async function renderizarDashboardAnalitica() {
             plugins: { legend: { display: false } }
         }
     });
+}
 
-    window.graficoIncidenciasInstance.update();
-    window.graficoTopRechazosInstance.update();
-    window.graficoVolumenBancosInstance.update();
+// ==========================================
+// FUNCIÓN AUXILIAR: DESTRUCCIÓN SEGURA DE INSTANCIAS CHART
+// ==========================================
+function destruirGraficosDashboard() {
+    if (window.graficoIncidenciasInstance && typeof window.graficoIncidenciasInstance.destroy === 'function') {
+        window.graficoIncidenciasInstance.destroy();
+        window.graficoIncidenciasInstance = null;
+    }
+    if (window.graficoTopRechazosInstance && typeof window.graficoTopRechazosInstance.destroy === 'function') {
+        window.graficoTopRechazosInstance.destroy();
+        window.graficoTopRechazosInstance = null;
+    }
+    if (window.graficoVolumenBancosInstance && typeof window.graficoVolumenBancosInstance.destroy === 'function') {
+        window.graficoVolumenBancosInstance.destroy();
+        window.graficoVolumenBancosInstance = null;
+    }
 }
 
 // ==========================================
@@ -1079,7 +1088,7 @@ function renderizarEstructuraBasePortal(contenidoDinamico) {
     `;
 
     const btnTickets = document.getElementById("btn-dash-regresar-tickets");
-    const btnOperaciones = document.getElementById("btn-dash-regresar-btn-dash-regresar-operaciones");
+    const btnOperaciones = document.getElementById("btn-dash-regresar-operaciones");
 
     if (btnTickets) btnTickets.addEventListener("click", renderizarBandejaTickets);
     if (btnOperaciones) {
