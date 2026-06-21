@@ -726,6 +726,7 @@ async function renderizarBandejaTickets() {
         updateKpi(0, 0, 0);
         return;
     }
+}
 
     let contPendientes = 0;
     let contCorregidos = 0;
