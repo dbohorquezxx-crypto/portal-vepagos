@@ -38,7 +38,7 @@ function arrancarPortal() {
     });
 }
 
-// Canal de Tiempo Real de Supabase
+/ Canal de Tiempo Real de Supabase
 function activarTiempoReal() {
     if (supabaseChannel) return;
     
@@ -47,16 +47,15 @@ function activarTiempoReal() {
         .on('postgres_changes', { event: '*', schema: 'public', table: 'tickets' }, async (payload) => {
             console.log("Cambio detectado en tiempo real en la base de datos:", payload);
             
-            // 1. Sincronizamos los datos de la nube a la memoria local
+            // 1. Sincronizamos los datos de la nube
             await recuperarBandejaSeguraSilencioso();
             
-            // 2. FORZAMOS EL REFRESCO VISUAL
-            // Validamos si el usuario está en la bandeja de tickets para redibujar la tabla inmediatamente
-            const contenedorTickets = document.getElementById("table-tickets-body");
-            if (contenedorTickets) {
-                console.log("🔄 Redibujando la bandeja de tickets automáticamente...");
-                recuperarBandejaSegura(); // O la función que procesa el arreglo y pinta la tabla
-                renderizarBandejaTickets(); 
+            // 2. FORZAMOS EL REFRESCO VISUAL INMEDIATO
+            // Verificamos qué pantalla está abierta y llamamos a su función respectiva
+            if (document.getElementById("table-tickets-body")) {
+                renderizarBandejaTickets();
+            } else if (document.getElementById("graficaEstatus")) {
+                renderizarDashboardAnalitica();
             }
         });
 }
