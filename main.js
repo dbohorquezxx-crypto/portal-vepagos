@@ -883,6 +883,7 @@ function configurarEventosTickets() {
 }
 
 // ==========================================
+// ==========================================
 // MÓDULO 4: DASHBOARD PREMIUM (LECTURA ACTUALIZADA)
 // ==========================================
 async function renderizarDashboardAnalitica() {
@@ -902,12 +903,12 @@ async function renderizarDashboardAnalitica() {
         observacionAuditor: t.auditoria_observacion
     }));
     
-    // 3. Cálculos dinámicos en tiempo real basados en los estatus reales
+    // 3. Cálculos dinámicos en tiempo real
     const totalIncidentes = bandejaTickets.length;
     
     // Contabilizamos únicamente los tickets que estén finalizados
     const totalAprobados = bandejaTickets.filter(t => 
-        String(t.estatusTicket).toUpperCase() === "FINALIZADO"
+        String(t.estatusTicket).toUpperCase().trim() === "FINALIZADO"
     ).length;
 
     const conteoBancos = {};
@@ -977,7 +978,7 @@ async function renderizarDashboardAnalitica() {
 
     renderizarEstructuraBasePortal(htmlDashboard);
 
-    // 5. Destrucción segura de instancias previas para evitar solapamientos
+    // 5. Destrucción segura de instancias previas de Chart.js
     if (window.graficoIncidenciasInstance) {
         window.graficoIncidenciasInstance.destroy();
     }
@@ -988,20 +989,13 @@ async function renderizarDashboardAnalitica() {
         window.graficoVolumenBancosInstance.destroy();
     }
 
-    // 6. Instanciación de las gráficas con Chart.js usando los datos frescos
+    // 6. Instanciación de las gráficas
     const ctxEstatus = document.getElementById('graficaEstatus').getContext('2d');
     window.graficoIncidenciasInstance = new Chart(ctxEstatus, {
         type: 'doughnut',
         data: {
             labels: ['Conciliados Exitosos', 'Incidencias / Rechazos'],
             datasets: [{
-                const ctxEstatus = document.getElementById('graficaEstatus').getContext('2d');
-    window.graficoIncidenciasInstance = new Chart(ctxEstatus, {
-        type: 'doughnut',
-        data: {
-            labels: ['Conciliados Exitosos', 'Incidencias / Rechazos'],
-            datasets: [{
-                // A incidencias totales le restamos los aprobados para que sea el remanente real de rechazos
                 data: [totalAprobados, totalIncidentes - totalAprobados],
                 backgroundColor: ['#10D07A', '#E63946'],
                 borderWidth: 2,
@@ -1045,8 +1039,43 @@ async function renderizarDashboardAnalitica() {
         }
     });
 
-    // 7. Forzamos la actualización visual para procesar el nuevo renderizado
     window.graficoIncidenciasInstance.update();
     window.graficoTopRechazosInstance.update();
     window.graficoVolumenBancosInstance.update();
+}
+
+// ==========================================
+// FUNCIÓN DEPENDIENTE: ESTRUCTURA BASE
+// ==========================================
+function renderizarEstructuraBasePortal(contenidoDinamico) {
+    const mainContent = document.getElementById("main-content");
+    if (!mainContent) return;
+
+    mainContent.innerHTML = `
+        <div class="nav-bar-portal">
+            <h3 style="margin: 0; font-size: 18px; font-weight: 600;">Panel Analítico General - Vepagos</h3>
+            <div style="display:flex; gap:10px;">
+                <button id="btn-dash-regresar-tickets" class="btn-primary" style="background-color: #1E293B;">🎫 Ver Tickets</button>
+                <button id="btn-dash-regresar-operaciones" class="btn-primary" style="background-color: #475569;">📁 Operaciones</button>
+            </div>
+        </div>
+        <div class="dashboard-wrapper" style="padding: 20px; max-width: 1200px; margin: 0 auto;">
+            ${contenidoDinamico}
+        </div>
+    `;
+
+    const btnTickets = document.getElementById("btn-dash-regresar-tickets");
+    const btnOperaciones = document.getElementById("btn-dash-regresar-operaciones");
+
+    if (btnTickets) btnTickets.addEventListener("click", renderizarBandejaTickets);
+    if (btnOperaciones) {
+        btnOperaciones.addEventListener("click", () => {
+            if (usuarioLogueado === "admin") {
+                inicializarModuloCarga();
+            } else {
+                alert("Acceso exclusivo para administradores.");
+                renderizarPantallaLogin();
+            }
+        });
+    }
 }
