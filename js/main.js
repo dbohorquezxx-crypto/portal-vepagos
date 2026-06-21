@@ -1,3 +1,10 @@
+// 1. Configuración de tus credenciales de Supabase
+const SUPABASE_URL = "https://mjwqgweljrjhkrgbfjsx.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_ymJmckuJN9ofmUhbTWXcSw__ulvnuwV";
+
+// 2. Inicializar el cliente oficial
+const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
 // ==========================================
 // MOTOR CENTRAL - GESTIÓN OPERATIVA VEPAGOS (VERSIÓN ESTABLE Y AUDITADA)
 // ==========================================
@@ -10,6 +17,7 @@ let usuarioLogueado = null;
 let graficoIncidenciasInstance = null; 
 let graficoTopRechazosInstance = null;
 let graficoVolumenBancosInstance = null;
+let supabaseChannel = null; // Canal para Realtime
 
 if (document.readyState === 'loading') {
     document.addEventListener("DOMContentLoaded", arrancarPortal);
@@ -19,19 +27,91 @@ if (document.readyState === 'loading') {
 
 function arrancarPortal() {
     console.log("Sistema de Gestión Operativa Vepagos - Arrancando motor...");
-    recuperarBandejaSegura();
-    renderizarPantallaLogin();
+    // Activamos la escucha en tiempo real global
+    activarTiempoReal();
+    // Descargamos de la nube y luego mostramos el login
+    recuperarBandejaSegura().then(() => {
+        renderizarPantallaLogin();
+    });
 }
 
-function recuperarBandejaSegura() {
+// Canal de Tiempo Real de Supabase
+function activarTiempoReal() {
+    if (supabaseChannel) return;
+    
+    supabaseChannel = supabase
+        .channel('cambios-tickets-global')
+        .on('postgres_changes', { event: '*', scheme: 'public', table: 'tickets' }, async (payload) => {
+            console.log("Cambio detectado en tiempo real en la base de datos:", payload);
+            // Volvemos a sincronizar la memoria local de manera silenciosa
+            await recuperarBandejaSeguraSilencioso();
+            
+            // Si el usuario está viendo la bandeja de tickets o el dashboard, refrescamos la vista actual
+            const contenedorTickets = document.getElementById("table-tickets-body");
+            const contenedorGraficas = document.getElementById("graficaEstatus");
+            
+            if (contenedorTickets) {
+                renderizarBandejaTickets();
+            } else if (contenedorGraficas) {
+                renderizarDashboardAnalitica();
+            }
+        })
+        .subscribe();
+}
+
+// Función conectada a Supabase para recuperar la bandeja de entrada
+async function recuperarBandejaSegura() {
     try {
-        const ticketsGuardados = localStorage.getItem("bandejaTicketsVepagos");
-        bandejaTickets = ticketsGuardados ? JSON.parse(ticketsGuardados) : [];
-        if (!Array.isArray(bandejaTickets)) bandejaTickets = [];
+        console.log("Consultando tickets en Supabase...");
+        const { data, error } = await supabase
+            .from('tickets')
+            .select('*')
+            .order('fecha_creacion', { ascending: false });
+
+        if (error) throw error;
+
+        // Mapeamos los campos reales de la base de datos
+        bandejaTickets = data.map(t => ({
+            id: t.ticket_id,
+            comercio: t.nombre_comercio,
+            modelo: t.modelo,
+            serial: t.serial_equipo,
+            sim: t.sim_card,
+            banco: t.banco,
+            motivo: t.motivo_rechazo,
+            estatusTicket: t.estatus, // Mantiene tu lógica visual unificada (PENDIENTE, CORREGIDO, FINALIZADO)
+            observacionAuditor: t.auditoria_observacion
+        }));
+        
+        console.log("Bandeja sincronizada desde la nube con", bandejaTickets.length, "tickets.");
     } catch (e) {
-        console.error("Estructura de tickets corrupta. Reiniciando bandeja...", e);
+        console.error("Error al sincronizar con Supabase. Usando bandeja vacía de respaldo...", e);
         bandejaTickets = [];
-        localStorage.setItem("bandejaTicketsVepagos", JSON.stringify([]));
+    }
+}
+
+// Recuperación silenciosa para actualizaciones en segundo plano por Realtime
+async function recuperarBandejaSeguraSilencioso() {
+    try {
+        const { data, error } = await supabase
+            .from('tickets')
+            .select('*')
+            .order('fecha_creacion', { ascending: false });
+        if (!error && data) {
+            bandejaTickets = data.map(t => ({
+                id: t.ticket_id,
+                comercio: t.nombre_comercio,
+                modelo: t.modelo,
+                serial: t.serial_equipo,
+                sim: t.sim_card,
+                banco: t.banco,
+                motivo: t.motivo_rechazo,
+                estatusTicket: t.estatus,
+                observacionAuditor: t.auditoria_observacion
+            }));
+        }
+    } catch (e) {
+        console.error(e);
     }
 }
 
@@ -245,7 +325,7 @@ function verificarArchivosListos() {
 // ==========================================
 // MÓDULO 2: AUDITORÍA Y CRUCE
 // ==========================================
-function ejecutarCruceYValidacion() {
+async function ejecutarCruceYValidacion() {
     if (usuarioLogueado !== "admin") {
         alert("Acceso denegado. Ruta exclusiva para Administradores.");
         renderizarPantallaLogin();
@@ -311,11 +391,8 @@ function ejecutarCruceYValidacion() {
     const tbody = document.getElementById("table-results-body");
     if (!tbody) return;
 
-    recuperarBandejaSegura();
+    await recuperarBandejaSegura();
 
-    // ==========================================
-    // 1. INDEXACIÓN DE INVENTARIO (RECHAZOS)
-    // ==========================================
     const inventarioMap = new Map();
     
     if (datosRechazos.length > 0) {
@@ -337,7 +414,6 @@ function ejecutarCruceYValidacion() {
 
                     let simLimpia = kSim && item[kSim] !== undefined ? String(item[kSim]).trim() : "No posee";
                     
-                    // Detección de operadora según el validador
                     let operadoraDetectada = "Indeterminada";
                     if (simLimpia !== "No posee") {
                         let simStr = simLimpia.replace(/\.0+$/, '').trim();
@@ -371,19 +447,18 @@ function ejecutarCruceYValidacion() {
     if (datosBase.length === 0) {
         tbody.innerHTML = `<tr><td colspan="10" style="text-align:center; padding:20px; color:#64748B;">No hay información cargada en el archivo base.</td></tr>`;
     } else {
-        datosBase.forEach((fila, index) => {
+        for (let index = 0; index < datosBase.length; index++) {
+            const fila = datosBase[index];
             try {
-                if (!fila) return;
+                if (!fila) continue;
                 const keysBase = Object.keys(fila);
                 
-                // Búsqueda de claves corregida para evitar tomar columnas erróneas
                 const campoComercio = keysBase.find(k => /^nombre$|^comercio$|^razon$|^razón$|^social$/i.test(k)) || 
                                       keysBase.find(k => /nombre|comercio|razon|razón|social/i.test(k)) || "";
                 
                 const campoAlmacen = keysBase.find(k => /almacen|almacén/i.test(k)) || "";
                 const campoModelo = keysBase.find(k => /^modelo$|^equipo$/i.test(k)) || keysBase.find(k => /modelo|equipo/i.test(k)) || "";
                 
-                // Búsqueda orientada a encontrar el campo Banco sin confundirlo con estatus (ej. "ACTIVO")
                 const campoBanco = keysBase.find(k => /^banco$|^entidad$|^banco_afectado$|^operadora$/i.test(k)) || 
                                    keysBase.find(k => /banco|entidad/i.test(k)) || "";
 
@@ -391,7 +466,6 @@ function ejecutarCruceYValidacion() {
                 const almacenValue = campoAlmacen && fila[campoAlmacen] !== undefined ? String(fila[campoAlmacen]).trim() : "N/D";
                 const modeloValue = campoModelo && fila[campoModelo] !== undefined ? String(fila[campoModelo]).trim() : "N/D";
                 
-                // Si no encuentra la columna de banco explícita, busca en toda la fila por un banco conocido o deja "SIN ASIGNAR"
                 let bancoValue = "SIN ASIGNAR";
                 if (campoBanco && fila[campoBanco] !== undefined) {
                     bancoValue = String(fila[campoBanco]).trim().toUpperCase();
@@ -418,37 +492,29 @@ function ejecutarCruceYValidacion() {
                     detallesRechazo.push("Pareo Relacional: Razón Social no encontrada en inventario");
                 }
 
-                // ==========================================
-                // MOTOR DE REGLAS - VALIDACIÓN ESTRICTA
-                // ==========================================
-                
-                // Regla 1: Obligatoriedad de Serial
-if (!serialAsignado || serialAsignado === "0" || serialAsignado.startsWith("S-INV") || serialAsignado === "undefined" || serialAsignado === "" || serialAsignado === "N/D") {
-    detallesRechazo.push("Obligatoriedad de Serial: Serial vacío, nulo o no encontrado en inventario");
-    pareoExitoso = false; 
-}
+                if (!serialAsignado || serialAsignado === "0" || serialAsignado.startsWith("S-INV") || serialAsignado === "undefined" || serialAsignado === "" || serialAsignado === "N/D") {
+                    detallesRechazo.push("Obligatoriedad de Serial: Serial vacío, nulo o no encontrado en inventario");
+                    pareoExitoso = false; 
+                }
 
-// Regla 2: Consistencia de Modelo/Serial y Coincidencia Exacta de Modelos POS
-if (pareoExitoso && (String(modeloValue).includes("9220") || String(modeloValue).includes("9220 CREDICARD"))) {
-    // Validación de serial
-    if (!String(serialAsignado).startsWith("9222")) {
-        detallesRechazo.push("Consistencia de Modelo/Serial: El serial debe iniciar numéricamente con '9222'");
-    }
-    
-    // Verificación adicional: Coincidencia del modelo en ambos archivos
-    const modeloInventario = activoInventario.modelo || "";
-    const modeloBaseLimpio = String(modeloValue).replace(/\s+/g, ' ').toUpperCase().trim();
-    const modeloInvLimpio = String(modeloInventario).replace(/\s+/g, ' ').toUpperCase().trim();
-    
-    // Estandarizamos denominaciones para evitar falsos rechazos por espacios o sufijos
-    const esCredicardBase = modeloBaseLimpio.includes("CREDICARD");
-    const esCredicardInv = modeloInvLimpio.includes("CREDICARD");
-    
-    if (esCredicardBase !== esCredicardInv) {
-        detallesRechazo.push(`Discrepancia de Modelo: El archivo base indica modelo '${modeloValue}' pero el inventario registra '${modeloInventario}'`);
-    }
-}
-                // Regla 3: Auditoría de asignación correcta de SIM Card según validadores
+                if (pareoExitoso && (String(modeloValue).includes("9220") || String(modeloValue).includes("9220 CREDICARD"))) {
+                    if (!String(serialAsignado).startsWith("9222")) {
+                        detallesRechazo.push("Consistencia de Modelo/Serial: El serial debe iniciar numéricamente con '9222'");
+                    }
+                    
+                    const activoInventario = inventarioMap.get(comercioNormalizado);
+                    const modeloInventario = activoInventario.modelo || "";
+                    const modeloBaseLimpio = String(modeloValue).replace(/\s+/g, ' ').toUpperCase().trim();
+                    const modeloInvLimpio = String(modeloInventario).replace(/\s+/g, ' ').toUpperCase().trim();
+                    
+                    const esCredicardBase = modeloBaseLimpio.includes("CREDICARD");
+                    const esCredicardInv = modeloInvLimpio.includes("CREDICARD");
+                    
+                    if (esCredicardBase !== esCredicardInv) {
+                        detallesRechazo.push(`Discrepancia de Modelo: El archivo base indica modelo '${modeloValue}' pero el inventario registra '${modeloInventario}'`);
+                    }
+                }
+
                 if (pareoExitoso && simcardAsignada !== "No posee") {
                     const simStr = String(simcardAsignada).replace(/\.0+$/, '').trim();
                     const serialStr = String(serialAsignado).trim();
@@ -496,42 +562,42 @@ if (pareoExitoso && (String(modeloValue).includes("9220") || String(modeloValue)
                 `;
                 tbody.appendChild(tr);
 
-                // ==========================================
-                // 3. GENERACIÓN DE TICKETS (CONTROL ANTI-DUPLICIDAD)
-                // ==========================================
                 if (!theRulePasses) {
                     let identificadorSerial = (serialAsignado && serialAsignado !== "N/D") ? serialAsignado : ("EMPTY-" + index);
+                    let generadoId = "TK-" + Math.floor(1000 + Math.random() * 9000);
                     
-                    // Se busca si existe un ticket previo para este comercio y serial en la bandeja
-                    let ticketExistente = bandejaTickets.find(t => t.comercio === comercioValue && t.serial === identificadorSerial);
+                    const { data: ticketRemoto } = await supabase
+                        .from('tickets')
+                        .select('*')
+                        .eq('nombre_comercio', comercioValue)
+                        .eq('serial_equipo', identificadorSerial)
+                        .maybeSingle();
 
-                    if (!ticketExistente) {
-                        bandejaTickets.push({
-                            id: "TK-" + Math.floor(1000 + Math.random() * 9000),
-                            comercio: comercioValue,
-                            almacen: almacenValue,
+                    if (!ticketRemoto) {
+                        await supabase.from('tickets').insert([{
+                            ticket_id: generadoId,
+                            nombre_comercio: comercioValue,
                             modelo: modeloValue,
-                            serial: identificadorSerial,
-                            sim: simcardAsignada,
+                            serial_equipo: identificadorSerial,
+                            sim_card: simcardAsignada,
                             banco: bancoValue,
-                            operadoraSim: operadoraSim,
-                            motivo: detalleReglaTexto,
-                            estatusTicket: "Pendiente",
-                            observacionAuditor: ""
-                        });
-                        console.log("Nueva incidencia registrada:", comercioValue);
+                            motivo_rechazo: detalleReglaTexto,
+                            estatus: 'PENDIENTE',
+                            auditoria_observacion: ''
+                        }]);
+                        console.log("Nueva incidencia guardada en Supabase:", comercioValue);
                     } else {
-                        // Si ya existe pero el motivo de rechazo cambió, se actualiza y reabre automáticamente
-                        if (ticketExistente.motivo !== detalleReglaTexto) {
-                            ticketExistente.motivo = detalleReglaTexto;
-                            ticketExistente.estatusTicket = "Pendiente";
-                            ticketExistente.observacionAuditor = "Reapertura automática: Se detectó una nueva causal de rechazo distinta a la anterior.";
-                            console.log("Incidencia actualizada con nueva causal:", comercioValue);
-                        } else {
-                            console.log("Rechazo idéntico ya registrado, ticket omitido para evitar duplicidad:", comercioValue);
+                        if (ticketRemoto.motivo_rechazo !== detalleReglaTexto) {
+                            await supabase.from('tickets')
+                                .update({
+                                    motivo_rechazo: detalleReglaTexto,
+                                    estatus: 'PENDIENTE',
+                                    auditoria_observacion: "Reapertura automática: Se detectó una nueva causal de rechazo."
+                                })
+                                .eq('ticket_id', ticketRemoto.ticket_id);
+                            console.log("Incidencia reabierta en Supabase:", comercioValue);
                         }
                     }
-                    localStorage.setItem("bandejaTicketsVepagos", JSON.stringify(bandejaTickets));
                 } else {
                     let casosAprobadosFila = {
                         ...fila,
@@ -546,7 +612,9 @@ if (pareoExitoso && (String(modeloValue).includes("9220") || String(modeloValue)
             } catch(filaError) {
                 console.error(`Error procesando la fila ${index + 1}:`, filaError);
             }
-        });
+        }
+        
+        await recuperarBandejaSegura();
     }
 
     const btnDescargar = document.getElementById("btn-descargar-xlsx");
@@ -554,13 +622,14 @@ if (pareoExitoso && (String(modeloValue).includes("9220") || String(modeloValue)
 }
 
 // ==========================================
-// MÓDULO 3: BANDEJA DE TICKETS
+// MÓDULO 3: BANDEJA DE TICKETS (CONECTADO A SUPABASE)
 // ==========================================
-function renderizarBandejaTickets() {
+async function renderizarBandejaTickets() {
     const mainContent = document.getElementById("main-content");
     if (!mainContent) return;
 
-    recuperarBandejaSegura();
+    // Traer datos frescos y mapear respetando las columnas físicas de Supabase
+    await recuperarBandejaSegura();
 
     let botonVolver = "";
     let botonDash = `<button id="btn-nav-dash-analista" class="btn-primary" style="background-color: var(--verde-exito); border: none; padding: 8px 16px; border-radius: 6px; color: var(--azul-corporativo); cursor: pointer; font-weight: 700; margin-right: 10px;">📈 Dashboard</button>`;
@@ -581,7 +650,7 @@ function renderizarBandejaTickets() {
             <div class="upload-header" style="display: flex; justify-content: space-between; align-items: center;">
                 <div>
                     <h2>🎫 Bandeja de Tickets e Incidencias</h2>
-                    <p>Gestión de reportes rechazados, alertas de corrección en caliente e historial de auditoría.</p>
+                    <p>Gestión de reportes rechazados, alertas de corrección en caliente e historial de auditoría (Nube).</p>
                 </div>
             </div>
 
@@ -644,15 +713,18 @@ function renderizarBandejaTickets() {
     let contFinalizados = 0;
 
     bandejaTickets.forEach((ticket) => {
-        if(ticket.estatusTicket === "Pendiente") contPendientes++;
-        if(ticket.estatusTicket === "Corregido") contCorregidos++;
-        if(ticket.estatusTicket === "Finalizado") contFinalizados++;
+        // Homologación de mayúsculas/minúsculas para el conteo de los KPIs
+        const estatusUpper = String(ticket.estatusTicket).toUpperCase();
+
+        if (estatusUpper === "PENDIENTE") contPendientes++;
+        if (estatusUpper === "CORREGIDO") contCorregidos++;
+        if (estatusUpper === "FINALIZADO") contFinalizados++;
 
         let estatusBadge = "";
         let accionesHtml = "";
         let auditoriaHtml = "";
 
-        if (ticket.estatusTicket === "Pendiente") {
+        if (estatusUpper === "PENDIENTE") {
             estatusBadge = `<span class="status-badge" style="background-color:#fef3c7; color:#d97706; border-color:#f59e0b; letter-spacing:0.5px; font-weight:700; text-transform:uppercase; padding:6px 12px; border-radius:20px; font-size:11px; border:1px solid transparent;">⏳ Pendiente</span>`;
             
             if (usuarioLogueado === "analista") {
@@ -662,7 +734,7 @@ function renderizarBandejaTickets() {
             }
             auditoriaHtml = `<span style="color:#64748b; font-size:12px; font-style:italic;">Esperando corrección...</span>`;
         
-        } else if (ticket.estatusTicket === "Corregido") {
+        } else if (estatusUpper === "CORREGIDO") {
             estatusBadge = `<span class="status-badge" style="background-color:#dbeafe; color:#2563eb; border-color:#bfdbfe; letter-spacing:0.5px; font-weight:700; text-transform:uppercase; padding:6px 12px; border-radius:20px; font-size:11px; border:1px solid transparent;">🔔 Notificado (Corregido)</span>`;
             
             if (usuarioLogueado === "analista") {
@@ -685,7 +757,7 @@ function renderizarBandejaTickets() {
                 auditoriaHtml = `<span style="font-size:12px; color:#3b82f6; font-style:italic;">En revisión por auditoría...</span>`;
             }
         
-        } else if (ticket.estatusTicket === "Finalizado") {
+        } else if (estatusUpper === "FINALIZADO") {
             estatusBadge = `<span class="status-badge status-resuelto-corporativo">✓ Finalizado (Aprobado)</span>`;
             accionesHtml = `<span style="font-size:12px; color:#097c47; font-weight:600;">Incidencia Cerrada</span>`;
             auditoriaHtml = `<span style="font-size:12px; font-weight:500; color:#334155;">Caso Aprobado. ${ticket.observacionAuditor ? `Obs: ${ticket.observacionAuditor}` : ''}</span>`;
@@ -720,83 +792,119 @@ function updateKpi(p, c, f) {
     if(fin) fin.innerText = f;
 }
 
+// ==========================================
+// CONFIGURACIÓN DE EVENTOS (ACTUALIZANDO EN SUPABASE)
+// ==========================================
 function configurarEventosTickets() {
+    // 1. OPERACIÓN DEL ANALISTA: MARCAR COMO CORREGIDO
     document.querySelectorAll(".btn-corregir").forEach(button => {
-        button.addEventListener("click", (e) => {
-            const id = e.target.getAttribute("data-id");
-            const ticket = bandejaTickets.find(t => t.id === id);
-            if (ticket) {
-                ticket.estatusTicket = "Corregido";
-                alert(`¡Se ha actualizado el estatus a "Corregido" y se ha disparado una notificación por correo a los auditores!`);
-                localStorage.setItem("bandejaTicketsVepagos", JSON.stringify(bandejaTickets));
+        button.addEventListener("click", async (e) => {
+            const ticketId = e.target.getAttribute("data-id");
+            
+            // Corregido: Filtramos por la columna física 'ticket_id' y actualizamos el campo físico 'estatus'
+            const { error } = await supabase
+                .from('tickets')
+                .update({ estatus: "CORREGIDO" })
+                .eq('ticket_id', ticketId);
+
+            if (!error) {
+                alert(`¡Se ha actualizado el estatus a "Corregido" en la nube!`);
                 renderizarBandejaTickets();
+            } else {
+                console.error(error);
+                alert("Error al actualizar en Supabase.");
             }
         });
     });
 
+    // 2. OPERACIÓN DEL ADMIN: FINALIZAR CASO
     document.querySelectorAll(".btn-finalizar").forEach(button => {
-        button.addEventListener("click", (e) => {
-            const id = e.target.getAttribute("data-id");
-            const ticket = bandejaTickets.find(t => t.id === id);
-            const observacionInput = document.getElementById(`obs-${id}`);
-            if (ticket) {
-                ticket.estatusTicket = "Finalizado";
-                ticket.observacionAuditor = observacionInput ? observacionInput.value : "";
-                alert(`El ticket ${ticket.id} ha sido auditado, finalizado y cerrado exitosamente.`);
-                localStorage.setItem("bandejaTicketsVepagos", JSON.stringify(bandejaTickets));
-                renderizarBandejaTickets();
-            }
-        });
-    });
-
-    document.querySelectorAll(".btn-reabrir").forEach(button => {
-        button.addEventListener("click", (e) => {
-            const id = e.target.getAttribute("data-id");
-            const ticket = bandejaTickets.find(t => t.id === id);
-            const observacionInput = document.getElementById(`obs-${id}`);
+        button.addEventListener("click", async (e) => {
+            const ticketId = e.target.getAttribute("data-id");
+            const observacionInput = document.getElementById(`obs-${ticketId}`);
             const observacion = observacionInput ? observacionInput.value : "";
 
-            if (ticket && observacion.trim() === "") {
-                alert("Para reabrir un caso, debe indicar una observación obligatoria explicando el motivo del rechazo al analista.");
+            // Corregido: Filtramos por la columna física 'ticket_id' y mapeamos los campos físicos de auditoría
+            const { error } = await supabase
+                .from('tickets')
+                .update({ 
+                    estatus: "FINALIZADO",
+                    auditoria_observacion: observacion 
+                })
+                .eq('ticket_id', ticketId);
+
+            if (!error) {
+                alert(`El ticket ${ticketId} ha sido auditado y cerrado en la nube.`);
+                renderizarBandejaTickets();
+            } else {
+                alert("Error al finalizar el ticket.");
+            }
+        });
+    });
+
+    // 3. OPERACIÓN DEL ADMIN: REABRIR CASO
+    document.querySelectorAll(".btn-reabrir").forEach(button => {
+        button.addEventListener("click", async (e) => {
+            const ticketId = e.target.getAttribute("data-id");
+            const observacionInput = document.getElementById(`obs-${ticketId}`);
+            const observacion = observacionInput ? observacionInput.value : "";
+
+            if (observacion.trim() === "") {
+                alert("Para reabrir un caso, debe indicar una observación obligatoria explicando el motivo.");
                 return;
             }
 
-            if (ticket) {
-                ticket.estatusTicket = "Pendiente";
-                ticket.observacionAuditor = observacion;
-                alert(`El ticket ${ticket.id} ha sido reabierto y devuelto a corrección con la observación: "${observacion}"`);
-                localStorage.setItem("bandejaTicketsVepagos", JSON.stringify(bandejaTickets));
+            // Corregido: Filtramos por la columna física 'ticket_id' y mapeamos a 'estatus' y 'auditoria_observacion'
+            const { error } = await supabase
+                .from('tickets')
+                .update({ 
+                    estatus: "PENDIENTE",
+                    auditoria_observacion: observacion 
+                })
+                .eq('ticket_id', ticketId);
+
+            if (!error) {
+                alert(`El ticket ${ticketId} ha sido reabierto.`);
                 renderizarBandejaTickets();
+            } else {
+                alert("Error al reabrir el ticket.");
             }
         });
     });
 }
 
 // ==========================================
-// MÓDULO 4: DASHBOARD PREMIUM Y ANALÍTICA AVANZADA
+// MÓDULO 4: DASHBOARD PREMIUM (LECTURA ACTUALIZADA)
 // ==========================================
-function renderizarDashboardAnalitica() {
-    recuperarBandejaSegura();
+async function renderizarDashboardAnalitica() {
+    const { data: ticketsFrescos } = await supabase.from('tickets').select('*');
+    
+    // Sincronizamos la estructura local
+    bandejaTickets = (ticketsFrescos || []).map(t => ({
+        id: t.ticket_id,
+        comercio: t.nombre_comercio,
+        modelo: t.modelo,
+        serial: t.serial_equipo,
+        sim: t.sim_card,
+        banco: t.banco,
+        motivo: t.motivo_rechazo,
+        estatusTicket: t.estatus,
+        observacionAuditor: t.auditoria_observacion
+    }));
     
     const totalIncidentes = bandejaTickets.length;
-    const totalAprobados = casosFiltradosAprobados ? casosFiltradosAprobados.length : 0;
+    const totalAprobados = window.casosFiltradosAprobados ? window.casosFiltradosAprobados.length : 0;
 
-    // ------------------------------------------
-    // 1. PROCESAMIENTO DE DATOS EN CALIENTE (MÉTRICAS)
-    // ------------------------------------------
     const conteoBancos = {};
     const conteoRechazos = {};
 
     bandejaTickets.forEach(ticket => {
-        // Corrección de filtro: "ACTIVO" es un banco válido en Venezuela. 
-        // Solo agrupamos campos vacíos o "SIN ASIGNAR".
         let bancoSaneado = ticket.banco ? ticket.banco.trim().toUpperCase() : "NO ESPECIFICADO";
         if (bancoSaneado === "SIN ASIGNAR" || bancoSaneado === "") {
             bancoSaneado = "NO ESPECIFICADO";
         }
         conteoBancos[bancoSaneado] = (conteoBancos[bancoSaneado] || 0) + 1;
 
-        // Simplificación y categorización de los motivos de rechazo para lectura gráfica
         let motivoSaneado = "Otras Discrepancias";
         if (/pareo|razón|social/i.test(ticket.motivo)) {
             motivoSaneado = "Error de Pareo (Razón Social)";
@@ -811,21 +919,16 @@ function renderizarDashboardAnalitica() {
         conteoRechazos[motivoSaneado] = (conteoRechazos[motivoSaneado] || 0) + 1;
     });
 
-    // Extracción de arreglos de datos para Chart.js
     const bancosLabels = Object.keys(conteoBancos);
     const bancosData = Object.values(conteoBancos);
-
     const rechazosLabels = Object.keys(conteoRechazos);
     const rechazosData = Object.values(conteoRechazos);
 
-    // ------------------------------------------
-    // 2. MAQUETACIÓN DE LA INTERFAZ (UI EN CUADRÍCULA)
-    // ------------------------------------------
     const htmlDashboard = `
         <div style="display:flex; flex-direction:column; gap:24px; font-family:'Inter', sans-serif;">
             <div class="upload-header" style="margin:0;">
                 <h2>📈 Dashboard y Analítica de Control Operativo</h2>
-                <p>Monitoreo gerencial en tiempo real de conciliaciones, volumetría bancaria y fallas recurrentes.</p>
+                <p>Monitoreo gerencial en tiempo real conectado a Supabase.</p>
             </div>
             
             <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:20px;">
@@ -840,37 +943,25 @@ function renderizarDashboardAnalitica() {
             </div>
 
             <div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px; align-items: start;">
-                
                 <div class="upload-container" style="background:#fff; padding:20px; border-radius:8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin:0;">
                     <h3 style="color: var(--azul-corporativo); font-size:16px; margin-bottom:16px; text-align:center;">Estatus General de Auditoría</h3>
                     <canvas id="graficaEstatus" style="max-height: 250px;"></canvas>
                 </div>
-
                 <div class="upload-container" style="background:#fff; padding:20px; border-radius:8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin:0;">
                     <h3 style="color: var(--azul-corporativo); font-size:16px; margin-bottom:16px; text-align:center;">Top Causales de Rechazos</h3>
                     <canvas id="graficaTopRechazos" style="max-height: 250px;"></canvas>
                 </div>
-
                 <div class="upload-container" style="grid-column: 1 / -1; background:#fff; padding:20px; border-radius:8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin:0;">
                     <h3 style="color: var(--azul-corporativo); font-size:16px; margin-bottom:16px;">Volumen de Incidencias Registradas por Entidad Bancaria</h3>
                     <canvas id="graficaVolumenBancos" style="max-height: 280px;"></canvas>
                 </div>
-
             </div>
         </div>
     `;
 
-    // Renderizado estructural base
     renderizarEstructuraBasePortal(htmlDashboard);
-
-    // Destrucción limpia de instancias previas para evitar desbordamiento de canvas en memoria
     destruirGraficosDashboard();
 
-    // ------------------------------------------
-    // 3. INICIALIZACIÓN DE COMPONENTES CHART.JS
-    // ------------------------------------------
-    
-    // Inicialización Gráfica 1: Estatus
     const ctxEstatus = document.getElementById('graficaEstatus').getContext('2d');
     graficoIncidenciasInstance = new Chart(ctxEstatus, {
         type: 'doughnut',
@@ -886,7 +977,6 @@ function renderizarDashboardAnalitica() {
         options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
     });
 
-    // Inicialización Gráfica 2: Causales de Rechazo
     const ctxRechazos = document.getElementById('graficaTopRechazos').getContext('2d');
     graficoTopRechazosInstance = new Chart(ctxRechazos, {
         type: 'pie',
@@ -898,18 +988,9 @@ function renderizarDashboardAnalitica() {
                 borderWidth: 1
             }]
         },
-        options: { 
-            responsive: true, 
-            plugins: { 
-                legend: { 
-                    position: 'bottom', 
-                    labels: { boxWidth: 12, font: { size: 11 } } 
-                } 
-            } 
-        }
+        options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
     });
 
-    // Inicialización Gráfica 3: Volumen por Banco (Barras Horizontales)
     const ctxBancos = document.getElementById('graficaVolumenBancos').getContext('2d');
     graficoVolumenBancosInstance = new Chart(ctxBancos, {
         type: 'bar',
@@ -923,7 +1004,7 @@ function renderizarDashboardAnalitica() {
             }]
         },
         options: {
-            indexAxis: 'y', // Cambia la orientación a horizontal para facilitar la lectura de los nombres bancarios
+            indexAxis: 'y',
             responsive: true,
             scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } } },
             plugins: { legend: { display: false } }
@@ -931,15 +1012,10 @@ function renderizarDashboardAnalitica() {
     });
 }
 
-// ==========================================
-// MÓDULO DE SOPORTE - NAVEGACIÓN COMPLEMENTARIA
-// ==========================================
-
 function renderizarEstructuraBasePortal(contenidoDinamico) {
     const mainContent = document.getElementById("main-content");
     if (!mainContent) return;
 
-    // Inyectamos un diseño limpio y corporativo con barra de navegación integrada
     mainContent.innerHTML = `
         <div class="nav-bar-portal">
             <h3 style="margin: 0; font-size: 18px; font-weight: 600;">Panel Analítico General - Vepagos</h3>
@@ -953,14 +1029,10 @@ function renderizarEstructuraBasePortal(contenidoDinamico) {
         </div>
     `;
 
-    // Escuchadores de eventos dinámicos y seguros para regresar desde el Dashboard
     const btnTickets = document.getElementById("btn-dash-regresar-tickets");
     const btnOperaciones = document.getElementById("btn-dash-regresar-operaciones");
 
-    if (btnTickets) {
-        btnTickets.addEventListener("click", renderizarBandejaTickets);
-    }
-
+    if (btnTickets) btnTickets.addEventListener("click", renderizarBandejaTickets);
     if (btnOperaciones) {
         btnOperaciones.addEventListener("click", () => {
             if (usuarioLogueado === "admin") {
