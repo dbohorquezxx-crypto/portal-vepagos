@@ -801,7 +801,6 @@ async function renderizarBandejaTickets() {
 
     updateKpi(contPendientes, contCorregidos, contFinalizados);
     configurarEventosTickets();
-}
 
 function updateKpi(p, c, f) {
     const pend = document.getElementById("kpi-pendientes");
