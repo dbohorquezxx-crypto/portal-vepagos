@@ -658,7 +658,7 @@ async function renderizarBandejaTickets() {
     } else {
         botonVolver = `${botonDash} <button id="btn-logout-analista" class="btn-primary btn-cerrar-sesion" style="border:none; padding:8px 16px; border-radius:6px; color:white; cursor:pointer; font-weight:500;">🚪 Cerrar Sesión</button>`;
     }
-}
+    
     mainContent.innerHTML = `
         <div class="nav-bar-portal">
             <h3 style="margin: 0; font-size: 18px; font-weight: 600;">Módulo de Gestión de Tickets (${usuarioLogueado === 'admin' ? 'Visualización Admin' : 'Dashboard Analista'})</h3>
