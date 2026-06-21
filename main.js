@@ -886,9 +886,10 @@ function configurarEventosTickets() {
 // MÓDULO 4: DASHBOARD PREMIUM (LECTURA ACTUALIZADA)
 // ==========================================
 async function renderizarDashboardAnalitica() {
+    // 1. Leemos los datos más recientes desde Supabase
     const { data: ticketsFrescos } = await supabase.from('tickets').select('*');
     
-    // Sincronizamos la estructura local
+    // 2. Sincronizamos la estructura local
     bandejaTickets = (ticketsFrescos || []).map(t => ({
         id: t.ticket_id,
         comercio: t.nombre_comercio,
@@ -901,10 +902,10 @@ async function renderizarDashboardAnalitica() {
         observacionAuditor: t.auditoria_observacion
     }));
     
-    // Incidencias totales de la bandeja
+    // 3. Cálculos dinámicos en tiempo real basados en los estatus reales
     const totalIncidentes = bandejaTickets.length;
     
-    // Calculamos los casos aprobados/finalizados en tiempo real
+    // Contabilizamos únicamente los tickets que estén finalizados
     const totalAprobados = bandejaTickets.filter(t => 
         String(t.estatusTicket).toUpperCase() === "FINALIZADO"
     ).length;
@@ -938,6 +939,7 @@ async function renderizarDashboardAnalitica() {
     const rechazosLabels = Object.keys(conteoRechazos);
     const rechazosData = Object.values(conteoRechazos);
 
+    // 4. Estructura HTML del Dashboard
     const htmlDashboard = `
         <div style="display:flex; flex-direction:column; gap:24px; font-family:'Inter', sans-serif;">
             <div class="upload-header" style="margin:0;">
@@ -974,8 +976,19 @@ async function renderizarDashboardAnalitica() {
     `;
 
     renderizarEstructuraBasePortal(htmlDashboard);
-    destruirGraficosDashboard();
 
+    // 5. Destrucción segura de instancias previas para evitar solapamientos
+    if (window.graficoIncidenciasInstance) {
+        window.graficoIncidenciasInstance.destroy();
+    }
+    if (window.graficoTopRechazosInstance) {
+        window.graficoTopRechazosInstance.destroy();
+    }
+    if (window.graficoVolumenBancosInstance) {
+        window.graficoVolumenBancosInstance.destroy();
+    }
+
+    // 6. Instanciación de las gráficas con Chart.js usando los datos frescos
     const ctxEstatus = document.getElementById('graficaEstatus').getContext('2d');
     window.graficoIncidenciasInstance = new Chart(ctxEstatus, {
         type: 'doughnut',
@@ -1024,4 +1037,9 @@ async function renderizarDashboardAnalitica() {
             plugins: { legend: { display: false } }
         }
     });
+
+    // 7. Forzamos la actualización visual para procesar el nuevo renderizado
+    window.graficoIncidenciasInstance.update();
+    window.graficoTopRechazosInstance.update();
+    window.graficoVolumenBancosInstance.update();
 }
