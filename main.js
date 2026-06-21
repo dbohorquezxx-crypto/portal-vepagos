@@ -629,8 +629,26 @@ async function renderizarBandejaTickets() {
     const mainContent = document.getElementById("main-content");
     if (!mainContent) return;
 
-    // Traer datos frescos y mapear respetando las columnas físicas de Supabase
+    // 1. Traer datos frescos y mapear respetando las columnas físicas de Supabase
     await recuperarBandejaSegura();
+
+    // 2. REFRESCO VISUAL FORZADO: Limpiamos y repintamos la tabla inmediatamente
+    const tableBody = document.getElementById("table-tickets-body");
+    if (tableBody) {
+        tableBody.innerHTML = ""; // Vaciamos la tabla actual
+        
+        // Suponiendo que 'tickets' es tu arreglo global con la información fresca
+        tickets.forEach(ticket => {
+            const fila = document.createElement("tr");
+            fila.innerHTML = `
+                <td>${ticket.id}</td>
+                <td>${ticket.cliente || ''}</td>
+                <td>${ticket.estatus || ''}</td>
+                <td>${ticket.analista || ''}</td>
+            `;
+            tableBody.appendChild(fila);
+        });
+    }
 
     let botonVolver = "";
     let botonDash = `<button id="btn-nav-dash-analista" class="btn-primary" style="background-color: var(--verde-exito); border: none; padding: 8px 16px; border-radius: 6px; color: var(--azul-corporativo); cursor: pointer; font-weight: 700; margin-right: 10px;">📈 Dashboard</button>`;
@@ -640,7 +658,7 @@ async function renderizarBandejaTickets() {
     } else {
         botonVolver = `${botonDash} <button id="btn-logout-analista" class="btn-primary btn-cerrar-sesion" style="border:none; padding:8px 16px; border-radius:6px; color:white; cursor:pointer; font-weight:500;">🚪 Cerrar Sesión</button>`;
     }
-
+}
     mainContent.innerHTML = `
         <div class="nav-bar-portal">
             <h3 style="margin: 0; font-size: 18px; font-weight: 600;">Módulo de Gestión de Tickets (${usuarioLogueado === 'admin' ? 'Visualización Admin' : 'Dashboard Analista'})</h3>
