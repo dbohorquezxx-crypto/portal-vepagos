@@ -1,13 +1,12 @@
-// 1. Configuración de tus credenciales de Supabase
-const SUPABASE_URL = "https://mjwqgweljrjhkrgbfjsx.supabase.co";
-const SUPABASE_ANON_KEY = "sb_publishable_ymJmckuJN9ofmUhbTWXcSw__ulvnuwV";
+// 1. Credenciales de tu proyecto
+const CLIENT_URL_SB = "https://mjwqgweljrjhkrgbfjsx.supabase.co";
+const CLIENT_KEY_SB = "sb_publishable_ymJmckuJN9ofmUhbTWXcSw__ulvnuwV";
 
-// 2. Creamos una variable temporal para la librería original
-const libreriaSupabase = supabase; 
+// 2. Crear la conexión real usando un objeto global seguro
+window.supabaseConexion = supabase.createClient(CLIENT_URL_SB, CLIENT_KEY_SB);
 
-// 3. Inicializamos el cliente usando la librería guardada
-// Esto reescribe la variable global 'supabase' de forma segura sin romper nada abajo
-supabase = libreriaSupabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// 3. Clonamos la referencia para que todo tu código de abajo funcione sin cambiar una sola línea
+var supabase = window.supabaseConexion;
 
 // ==========================================
 // MOTOR CENTRAL - GESTIÓN OPERATIVA VEPAGOS (VERSIÓN ESTABLE Y AUDITADA)
