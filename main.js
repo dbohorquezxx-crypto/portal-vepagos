@@ -1063,4 +1063,3 @@ function renderizarEstructuraBasePortal(contenidoDinamico) {
         });
     }
 }
-}
