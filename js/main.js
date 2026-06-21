@@ -2,8 +2,12 @@
 const SUPABASE_URL = "https://mjwqgweljrjhkrgbfjsx.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_ymJmckuJN9ofmUhbTWXcSw__ulvnuwV";
 
-// 2. Inicializar el cliente oficial
-const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// 2. Creamos una variable temporal para la librería original
+const libreriaSupabase = supabase; 
+
+// 3. Inicializamos el cliente usando la librería guardada
+// Esto reescribe la variable global 'supabase' de forma segura sin romper nada abajo
+supabase = libreriaSupabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // ==========================================
 // MOTOR CENTRAL - GESTIÓN OPERATIVA VEPAGOS (VERSIÓN ESTABLE Y AUDITADA)
