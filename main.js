@@ -901,8 +901,13 @@ async function renderizarDashboardAnalitica() {
         observacionAuditor: t.auditoria_observacion
     }));
     
+    // Incidencias totales de la bandeja
     const totalIncidentes = bandejaTickets.length;
-    const totalAprobados = window.casosFiltradosAprobados ? window.casosFiltradosAprobados.length : 0;
+    
+    // Calculamos los casos aprobados/finalizados en tiempo real
+    const totalAprobados = bandejaTickets.filter(t => 
+        String(t.estatusTicket).toUpperCase() === "FINALIZADO"
+    ).length;
 
     const conteoBancos = {};
     const conteoRechazos = {};
@@ -972,7 +977,7 @@ async function renderizarDashboardAnalitica() {
     destruirGraficosDashboard();
 
     const ctxEstatus = document.getElementById('graficaEstatus').getContext('2d');
-    graficoIncidenciasInstance = new Chart(ctxEstatus, {
+    window.graficoIncidenciasInstance = new Chart(ctxEstatus, {
         type: 'doughnut',
         data: {
             labels: ['Conciliados Exitosos', 'Incidencias / Rechazos'],
@@ -987,7 +992,7 @@ async function renderizarDashboardAnalitica() {
     });
 
     const ctxRechazos = document.getElementById('graficaTopRechazos').getContext('2d');
-    graficoTopRechazosInstance = new Chart(ctxRechazos, {
+    window.graficoTopRechazosInstance = new Chart(ctxRechazos, {
         type: 'pie',
         data: {
             labels: rechazosLabels.length > 0 ? rechazosLabels : ['Sin registros'],
@@ -1001,7 +1006,7 @@ async function renderizarDashboardAnalitica() {
     });
 
     const ctxBancos = document.getElementById('graficaVolumenBancos').getContext('2d');
-    graficoVolumenBancosInstance = new Chart(ctxBancos, {
+    window.graficoVolumenBancosInstance = new Chart(ctxBancos, {
         type: 'bar',
         data: {
             labels: bancosLabels.length > 0 ? bancosLabels : ['Sin datos'],
@@ -1019,49 +1024,4 @@ async function renderizarDashboardAnalitica() {
             plugins: { legend: { display: false } }
         }
     });
-}
-
-function renderizarEstructuraBasePortal(contenidoDinamico) {
-    const mainContent = document.getElementById("main-content");
-    if (!mainContent) return;
-
-    mainContent.innerHTML = `
-        <div class="nav-bar-portal">
-            <h3 style="margin: 0; font-size: 18px; font-weight: 600;">Panel Analítico General - Vepagos</h3>
-            <div style="display:flex; gap:10px;">
-                <button id="btn-dash-regresar-tickets" class="btn-primary" style="background-color: #1E293B;">🎫 Ver Tickets</button>
-                <button id="btn-dash-regresar-operaciones" class="btn-primary" style="background-color: #475569;">📁 Operaciones</button>
-            </div>
-        </div>
-        <div class="dashboard-wrapper" style="padding: 20px; max-width: 1200px; margin: 0 auto;">
-            ${contenidoDinamico}
-        </div>
-    `;
-
-    const btnTickets = document.getElementById("btn-dash-regresar-tickets");
-    const btnOperaciones = document.getElementById("btn-dash-regresar-operaciones");
-
-    if (btnTickets) btnTickets.addEventListener("click", renderizarBandejaTickets);
-    if (btnOperaciones) {
-        btnOperaciones.addEventListener("click", () => {
-            if (usuarioLogueado === "admin") {
-                inicializarModuloCarga();
-            } else {
-                alert("Acceso exclusivo para administradores.");
-                renderizarPantallaLogin();
-            }
-        });
-    }
-}
-
-function destruirGraficosDashboard() {
-    if (window.graficoIncidenciasInstance) {
-        window.graficoIncidenciasInstance.destroy();
-    }
-    if (window.graficoTopRechazosInstance) {
-        window.graficoTopRechazosInstance.destroy();
-    }
-    if (window.graficoVolumenBancosInstance) {
-        window.graficoVolumenBancosInstance.destroy();
-    }
 }
