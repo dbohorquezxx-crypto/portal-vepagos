@@ -884,6 +884,7 @@ function configurarEventosTickets() {
 
 // ==========================================
 // ==========================================
+// ==========================================
 // MÓDULO 4: DASHBOARD PREMIUM (LECTURA ACTUALIZADA)
 // ==========================================
 async function renderizarDashboardAnalitica() {
@@ -903,13 +904,22 @@ async function renderizarDashboardAnalitica() {
         observacionAuditor: t.auditoria_observacion
     }));
     
-    // 3. Cálculos dinámicos en tiempo real
+    // 3. Cálculos independientes por cada métrica
     const totalIncidentes = bandejaTickets.length;
     
-    // Contabilizamos únicamente los tickets que estén finalizados
-    const totalAprobados = bandejaTickets.filter(t => 
+    // Casos Finalizados (Métrica 1)
+    const totalFinalizados = bandejaTickets.filter(t => 
         String(t.estatusTicket).toUpperCase().trim() === "FINALIZADO"
     ).length;
+
+    // Casos Notificados / Corregidos (Métrica 2)
+    const totalNotificados = bandejaTickets.filter(t => 
+        String(t.estatusTicket).toUpperCase().trim().includes("CORREGIDO") ||
+        String(t.estatusTicket).toUpperCase().trim().includes("NOTIFICADO")
+    ).length;
+
+    // Rechazos puros: el remanente que no está ni finalizado ni corregido
+    const totalRechazosPuros = totalIncidentes - (totalFinalizados + totalNotificados);
 
     const conteoBancos = {};
     const conteoRechazos = {};
@@ -940,7 +950,7 @@ async function renderizarDashboardAnalitica() {
     const rechazosLabels = Object.keys(conteoRechazos);
     const rechazosData = Object.values(conteoRechazos);
 
-    // 4. Estructura HTML del Dashboard
+    // 4. Estructura HTML con tarjetas (KPIs) totalmente separadas
     const htmlDashboard = `
         <div style="display:flex; flex-direction:column; gap:24px; font-family:'Inter', sans-serif;">
             <div class="upload-header" style="margin:0;">
@@ -949,13 +959,17 @@ async function renderizarDashboardAnalitica() {
             </div>
             
             <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:20px;">
+                <div class="kpi-card" style="background:#fff; padding:20px; border-radius:8px; border-left:5px solid #10D07A; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                    <h3 style="margin:0; color:#64748B; font-size:13px; text-transform:uppercase; font-weight:600;">Casos Finalizados</h3>
+                    <p style="margin:8px 0 0 0; font-size:32px; font-weight:700; color:#10D07A;">${totalFinalizados}</p>
+                </div>
+                <div class="kpi-card" style="background:#fff; padding:20px; border-radius:8px; border-left:5px solid #3B82F6; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                    <h3 style="margin:0; color:#64748B; font-size:13px; text-transform:uppercase; font-weight:600;">Casos Notificados (Corregidos)</h3>
+                    <p style="margin:8px 0 0 0; font-size:32px; font-weight:700; color:#3B82F6;">${totalNotificados}</p>
+                </div>
                 <div class="kpi-card" style="background:#fff; padding:20px; border-radius:8px; border-left:5px solid var(--rojo-alerta); box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
                     <h3 style="margin:0; color:#64748B; font-size:13px; text-transform:uppercase; font-weight:600;">Incidencias Totales</h3>
                     <p style="margin:8px 0 0 0; font-size:32px; font-weight:700; color:var(--rojo-alerta);">${totalIncidentes}</p>
-                </div>
-                <div class="kpi-card" style="background:#fff; padding:20px; border-radius:8px; border-left:5px solid #10D07A; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-                    <h3 style="margin:0; color:#64748B; font-size:13px; text-transform:uppercase; font-weight:600;">Terminales Conciliados</h3>
-                    <p style="margin:8px 0 0 0; font-size:32px; font-weight:700; color:#10D07A;">${totalAprobados}</p>
                 </div>
             </div>
 
@@ -989,15 +1003,15 @@ async function renderizarDashboardAnalitica() {
         window.graficoVolumenBancosInstance.destroy();
     }
 
-    // 6. Instanciación de las gráficas
+    // 6. Instanciación de la gráfica de dona con los tres universos separados
     const ctxEstatus = document.getElementById('graficaEstatus').getContext('2d');
     window.graficoIncidenciasInstance = new Chart(ctxEstatus, {
         type: 'doughnut',
         data: {
-            labels: ['Conciliados Exitosos', 'Incidencias / Rechazos'],
+            labels: ['Finalizados', 'Notificados (Corregidos)', 'Incidencias Restantes'],
             datasets: [{
-                data: [totalAprobados, totalIncidentes - totalAprobados],
-                backgroundColor: ['#10D07A', '#E63946'],
+                data: [totalFinalizados, totalNotificados, totalRechazosPuros],
+                backgroundColor: ['#10D07A', '#3B82F6', '#E63946'],
                 borderWidth: 2,
                 borderColor: '#FFFFFF'
             }]
@@ -1065,7 +1079,7 @@ function renderizarEstructuraBasePortal(contenidoDinamico) {
     `;
 
     const btnTickets = document.getElementById("btn-dash-regresar-tickets");
-    const btnOperaciones = document.getElementById("btn-dash-regresar-operaciones");
+    const btnOperaciones = document.getElementById("btn-dash-regresar-btn-dash-regresar-operaciones");
 
     if (btnTickets) btnTickets.addEventListener("click", renderizarBandejaTickets);
     if (btnOperaciones) {
