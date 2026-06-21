@@ -38,7 +38,7 @@ function arrancarPortal() {
     });
 }
 
-/ Canal de Tiempo Real de Supabase
+// Canal de Tiempo Real de Supabase
 function activarTiempoReal() {
     if (supabaseChannel) return;
     
@@ -51,13 +51,13 @@ function activarTiempoReal() {
             await recuperarBandejaSeguraSilencioso();
             
             // 2. FORZAMOS EL REFRESCO VISUAL INMEDIATO
-            // Verificamos qué pantalla está abierta y llamamos a su función respectiva
             if (document.getElementById("table-tickets-body")) {
                 renderizarBandejaTickets();
             } else if (document.getElementById("graficaEstatus")) {
                 renderizarDashboardAnalitica();
             }
-        });
+        })
+        .subscribe();
 }
 
 // Función conectada a Supabase para recuperar la bandeja de entrada
