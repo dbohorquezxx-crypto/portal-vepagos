@@ -44,7 +44,7 @@ function activarTiempoReal() {
     
     supabaseChannel = supabase
         .channel('cambios-tickets-global')
-        .on('postgres_changes', { event: '*', scheme: 'public', table: 'tickets' }, async (payload) => {
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'tickets' }, async (payload) => {
             console.log("Cambio detectado en tiempo real en la base de datos:", payload);
             // Volvemos a sincronizar la memoria local de manera silenciosa
             await recuperarBandejaSeguraSilencioso();
