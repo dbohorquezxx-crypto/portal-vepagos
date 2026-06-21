@@ -995,7 +995,14 @@ async function renderizarDashboardAnalitica() {
         data: {
             labels: ['Conciliados Exitosos', 'Incidencias / Rechazos'],
             datasets: [{
-                data: [totalAprobados, totalIncidentes],
+                const ctxEstatus = document.getElementById('graficaEstatus').getContext('2d');
+    window.graficoIncidenciasInstance = new Chart(ctxEstatus, {
+        type: 'doughnut',
+        data: {
+            labels: ['Conciliados Exitosos', 'Incidencias / Rechazos'],
+            datasets: [{
+                // A incidencias totales le restamos los aprobados para que sea el remanente real de rechazos
+                data: [totalAprobados, totalIncidentes - totalAprobados],
                 backgroundColor: ['#10D07A', '#E63946'],
                 borderWidth: 2,
                 borderColor: '#FFFFFF'
