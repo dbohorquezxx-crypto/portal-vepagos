@@ -84,7 +84,7 @@ async function recuperarBandejaSegura() {
             observacionAuditor: t.auditoria_observacion
         }));
         
-        console.log("Bandeja sincronizada desde la nube con", bandejaTickets.length, "tickets.");
+        console.log("Bandeja sincronizada desde la nube con", bandejaTickets.length, "registros.");
     } catch (e) {
         console.error("Error al sincronizar con Supabase. Usando bandeja vacía de respaldo...", e);
         bandejaTickets = [];
