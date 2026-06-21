@@ -804,7 +804,6 @@ function configurarEventosTickets() {
         button.addEventListener("click", async (e) => {
             const ticketId = e.target.getAttribute("data-id");
             
-            // Corregido: Filtramos por la columna física 'ticket_id' y actualizamos el campo físico 'estatus'
             const { error } = await supabase
                 .from('tickets')
                 .update({ estatus: "CORREGIDO" })
@@ -812,6 +811,9 @@ function configurarEventosTickets() {
 
             if (!error) {
                 alert(`¡Se ha actualizado el estatus a "Corregido" en la nube!`);
+                await recuperarBandejaSegura();
+                destruirGraficosDashboard();
+                renderizarDashboardAnalitica();
                 renderizarBandejaTickets();
             } else {
                 console.error(error);
@@ -827,7 +829,6 @@ function configurarEventosTickets() {
             const observacionInput = document.getElementById(`obs-${ticketId}`);
             const observacion = observacionInput ? observacionInput.value : "";
 
-            // Corregido: Filtramos por la columna física 'ticket_id' y mapeamos los campos físicos de auditoría
             const { error } = await supabase
                 .from('tickets')
                 .update({ 
@@ -838,6 +839,9 @@ function configurarEventosTickets() {
 
             if (!error) {
                 alert(`El ticket ${ticketId} ha sido auditado y cerrado en la nube.`);
+                await recuperarBandejaSegura();
+                destruirGraficosDashboard();
+                renderizarDashboardAnalitica();
                 renderizarBandejaTickets();
             } else {
                 alert("Error al finalizar el ticket.");
@@ -857,7 +861,6 @@ function configurarEventosTickets() {
                 return;
             }
 
-            // Corregido: Filtramos por la columna física 'ticket_id' y mapeamos a 'estatus' y 'auditoria_observacion'
             const { error } = await supabase
                 .from('tickets')
                 .update({ 
@@ -868,6 +871,9 @@ function configurarEventosTickets() {
 
             if (!error) {
                 alert(`El ticket ${ticketId} ha sido reabierto.`);
+                await recuperarBandejaSegura();
+                destruirGraficosDashboard();
+                renderizarDashboardAnalitica();
                 renderizarBandejaTickets();
             } else {
                 alert("Error al reabrir el ticket.");
@@ -1045,5 +1051,17 @@ function renderizarEstructuraBasePortal(contenidoDinamico) {
                 renderizarPantallaLogin();
             }
         });
+    }
+}
+
+function destruirGraficosDashboard() {
+    if (window.graficoIncidenciasInstance) {
+        window.graficoIncidenciasInstance.destroy();
+    }
+    if (window.graficoTopRechazosInstance) {
+        window.graficoTopRechazosInstance.destroy();
+    }
+    if (window.graficoVolumenBancosInstance) {
+        window.graficoVolumenBancosInstance.destroy();
     }
 }
