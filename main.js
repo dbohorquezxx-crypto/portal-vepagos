@@ -632,13 +632,13 @@ async function renderizarBandejaTickets() {
     // 1. Traer datos frescos y mapear respetando las columnas físicas de Supabase
     await recuperarBandejaSegura();
 
-    // 2. REFRESCO VISUAL FORZADO: Limpiamos y repintamos la tabla inmediatamente
+// 2. REFRESCO VISUAL FORZADO: Limpiamos y repintamos la tabla inmediatamente
     const tableBody = document.getElementById("table-tickets-body");
     if (tableBody) {
         tableBody.innerHTML = ""; // Vaciamos la tabla actual
         
-        // Suponiendo que 'tickets' es tu arreglo global con la información fresca
-        tickets.forEach(ticket => {
+        // Usamos la variable global correcta: bandejaTickets
+        bandejaTickets.forEach(ticket => {
             const fila = document.createElement("tr");
             fila.innerHTML = `
                 <td>${ticket.id}</td>
