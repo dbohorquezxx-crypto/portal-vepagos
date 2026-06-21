@@ -800,6 +800,7 @@ async function renderizarBandejaTickets() {
 
     updateKpi(contPendientes, contCorregidos, contFinalizados);
     configurarEventosTickets();
+} // AQUÍ CIERRA CORRECTAMENTE LA FUNCIÓN async function renderizarBandejaTickets()
 
 function updateKpi(p, c, f) {
     const pend = document.getElementById("kpi-pendientes");
