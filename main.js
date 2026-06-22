@@ -895,7 +895,7 @@ async function renderizarDashboardAnalitica() {
         observacionAuditor: t.auditoria_observacion
     }));
     
-    // 3. Cálculos independientes por cada métrica corporativa
+    // 3. Cálculos independientes por cada métrica
     const totalIncidentes = bandejaTickets.length;
     
     const totalFinalizados = bandejaTickets.filter(t => 
@@ -913,31 +913,24 @@ async function renderizarDashboardAnalitica() {
     const conteoRechazos = {};
 
     bandejaTickets.forEach(ticket => {
-        // Sanear el Banco (Nota: El Banco NO altera la lógica del cruce, solo se visualiza en esta gráfica de barras)
         let bancoSaneado = ticket.banco ? ticket.banco.trim().toUpperCase() : "NO ESPECIFICADO";
         if (bancoSaneado === "SIN ASIGNAR" || bancoSaneado === "") {
             bancoSaneado = "NO ESPECIFICADO";
         }
         conteoBancos[bancoSaneado] = (conteoBancos[bancoSaneado] || 0) + 1;
 
-        // --- SISTEMA INTERNO DE CLASIFICACIÓN OPERATIVA (SANEADO SEGÚN REGLAS DE NEGOCIO) ---
         let motivoSaneado = "Otras Discrepancias";
         const motivoLower = String(ticket.motivo).toLowerCase();
 
-        // Regla 1: Reglas explícitas de Operadores (Movilnet, Movistar, Digitel)
         if (motivoLower.includes("movilnet") || /895806/.test(motivoLower)) {
             motivoSaneado = "Movilnet: No inicia con 895806";
         } else if (motivoLower.includes("movistar") || /debe terminar en número/.test(motivoLower)) {
             motivoSaneado = "Movistar: SIM no termina en número";
         } else if (motivoLower.includes("digitel") || /debe terminar en letra/.test(motivoLower)) {
             motivoSaneado = "Digitel: SIM no termina en letra";
-        } 
-        // Regla 2: Regla explícita del hardware NEW9220
-        else if (/9222/.test(motivoLower) || (String(ticket.modelo).toUpperCase().includes("NEW9220") && !String(ticket.serial).startsWith("9222"))) {
+        } else if (/9222/.test(motivoLower) || (String(ticket.modelo).toUpperCase().includes("NEW9220") && !String(ticket.serial).startsWith("9222"))) {
             motivoSaneado = "NEW9220: Serial no inicia con 9222";
-        } 
-        // Regla 3: Otros problemas de integridad genéricos
-        else if (/pareo|razón|social/i.test(ticket.motivo)) {
+        } else if (/pareo|razón|social/i.test(ticket.motivo)) {
             motivoSaneado = "Error de Pareo (Razón Social)";
         } else if (/obligatoriedad|serial vacío/i.test(ticket.motivo)) {
             motivoSaneado = "Serial Vacío o Nulo";
@@ -955,40 +948,40 @@ async function renderizarDashboardAnalitica() {
     const rechazosLabels = Object.keys(conteoRechazos);
     const rechazosData = Object.values(conteoRechazos);
 
-    // 4. Estructura HTML con tarjetas KPIs separadas
+    // 4. Estructura HTML alineada al manual (Colores de marca e inclusión del Lema Oficial)
     const htmlDashboard = `
-        <div style="display:flex; flex-direction:column; gap:24px; font-family:'Inter', sans-serif;">
-            <div class="upload-header" style="margin:0;">
-                <h2>📈 Dashboard y Analítica de Control Operativo</h2>
-                <p>Monitoreo gerencial en tiempo real conectado a Supabase con auditoría de Telcos.</p>
+        <div style="display:flex; flex-direction:column; gap:24px;">
+            <div class="upload-header" style="margin:0; background: #FFFFFF; padding: 20px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); border-left: 5px solid #001F60;">
+                <h2 style="color: #001F60; margin:0; font-size: 24px; font-weight: 700;">📈 Dashboard y Analítica de Control Operativo</h2>
+                <p class="lema-corporativo">“Cada hora que le quitamos a lo manual es una hora que le damos al cliente.”</p>
             </div>
             
             <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:20px;">
-                <div class="kpi-card" style="background:#fff; padding:20px; border-radius:8px; border-left:5px solid #10D07A; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                <div class="kpi-card" style="background:#fff; padding:20px; border-radius:8px; border-left:5px solid #00B36C; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
                     <h3 style="margin:0; color:#64748B; font-size:13px; text-transform:uppercase; font-weight:600;">Casos Finalizados</h3>
-                    <p style="margin:8px 0 0 0; font-size:32px; font-weight:700; color:#10D07A;">${totalFinalizados}</p>
+                    <p style="margin:8px 0 0 0; font-size:32px; font-weight:700; color:#00B36C;">${totalFinalizados}</p>
                 </div>
-                <div class="kpi-card" style="background:#fff; padding:20px; border-radius:8px; border-left:5px solid #3B82F6; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                <div class="kpi-card" style="background:#fff; padding:20px; border-radius:8px; border-left:5px solid #3B82F6; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
                     <h3 style="margin:0; color:#64748B; font-size:13px; text-transform:uppercase; font-weight:600;">Casos Notificados (Corregidos)</h3>
                     <p style="margin:8px 0 0 0; font-size:32px; font-weight:700; color:#3B82F6;">${totalNotificados}</p>
                 </div>
-                <div class="kpi-card" style="background:#fff; padding:20px; border-radius:8px; border-left:5px solid var(--rojo-alerta); box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                <div class="kpi-card" style="background:#fff; padding:20px; border-radius:8px; border-left:5px solid #E63946; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
                     <h3 style="margin:0; color:#64748B; font-size:13px; text-transform:uppercase; font-weight:600;">Incidencias Totales</h3>
-                    <p style="margin:8px 0 0 0; font-size:32px; font-weight:700; color:var(--rojo-alerta);">${totalIncidentes}</p>
+                    <p style="margin:8px 0 0 0; font-size:32px; font-weight:700; color:#E63946;">${totalIncidentes}</p>
                 </div>
             </div>
 
             <div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px; align-items: start;">
-                <div class="upload-container" style="background:#fff; padding:20px; border-radius:8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin:0;">
-                    <h3 style="color: var(--azul-corporativo); font-size:16px; margin-bottom:16px; text-align:center;">Estatus General de Auditoría</h3>
+                <div class="upload-container" style="background:#fff; padding:20px; border-radius:8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); margin:0;">
+                    <h3 style="color: #001F60; font-size:16px; margin-bottom:16px; text-align:center; font-weight:700;">Estatus General de Auditoría</h3>
                     <canvas id="graficaEstatus" style="max-height: 250px;"></canvas>
                 </div>
-                <div class="upload-container" style="background:#fff; padding:20px; border-radius:8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin:0;">
-                    <h3 style="color: var(--azul-corporativo); font-size:16px; margin-bottom:16px; text-align:center;">Top Causales de Rechazos</h3>
+                <div class="upload-container" style="background:#fff; padding:20px; border-radius:8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); margin:0;">
+                    <h3 style="color: #001F60; font-size:16px; margin-bottom:16px; text-align:center; font-weight:700;">Top Causales de Rechazos</h3>
                     <canvas id="graficaTopRechazos" style="max-height: 250px;"></canvas>
                 </div>
-                <div class="upload-container" style="grid-column: 1 / -1; background:#fff; padding:20px; border-radius:8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin:0;">
-                    <h3 style="color: var(--azul-corporativo); font-size:16px; margin-bottom:16px;">Volumen de Incidencias Registradas por Entidad Bancaria</h3>
+                <div class="upload-container" style="grid-column: 1 / -1; background:#fff; padding:20px; border-radius:8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); margin:0;">
+                    <h3 style="color: #001F60; font-size:16px; margin-bottom:16px; font-weight:700;">Volumen de Incidencias Registradas por Entidad Bancaria</h3>
                     <canvas id="graficaVolumenBancos" style="max-height: 280px;"></canvas>
                 </div>
             </div>
@@ -998,7 +991,7 @@ async function renderizarDashboardAnalitica() {
     renderizarEstructuraBasePortal(htmlDashboard);
     destruirGraficosDashboard();
 
-    // 5. Instanciación segura de Gráficos de Control con Chart.js
+    // 5. Instanciación de Gráficos usando colores hex planos del manual para Chart.js
     const ctxEstatus = document.getElementById('graficaEstatus').getContext('2d');
     window.graficoIncidenciasInstance = new Chart(ctxEstatus, {
         type: 'doughnut',
@@ -1006,7 +999,7 @@ async function renderizarDashboardAnalitica() {
             labels: ['Finalizados', 'Notificados (Corregidos)', 'Incidencias Restantes'],
             datasets: [{
                 data: [totalFinalizados, totalNotificados, totalRechazosPuros],
-                backgroundColor: ['#10D07A', '#3B82F6', '#E63946'],
+                backgroundColor: ['#00B36C', '#3B82F6', '#E63946'], // Sincronizado con Verde Vepagos y Rojo Alerta
                 borderWidth: 2,
                 borderColor: '#FFFFFF'
             }]
@@ -1021,7 +1014,7 @@ async function renderizarDashboardAnalitica() {
             labels: rechazosLabels.length > 0 ? rechazosLabels : ['Sin registros'],
             datasets: [{
                 data: rechazosData.length > 0 ? rechazosData : [0],
-                backgroundColor: ['#F59E0B', '#3B82F6', '#EF4444', '#8B5CF6', '#EC4899', '#10D07A', '#F43F5E'],
+                backgroundColor: ['#001F60', '#00B36C', '#F59E0B', '#3B82F6', '#EC4899', '#8B5CF6'], // Combinación Navy y Verde Vepagos
                 borderWidth: 1
             }]
         },
@@ -1036,7 +1029,7 @@ async function renderizarDashboardAnalitica() {
             datasets: [{
                 label: 'Cantidad de Casos',
                 data: bancosData.length > 0 ? bancosData : [0],
-                backgroundColor: '#1E293B',
+                backgroundColor: '#001F60', // Barras en Azul Navy oficial
                 borderRadius: 4
             }]
         },
