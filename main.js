@@ -940,9 +940,10 @@ function descargarExcelAprobados() {
         const worksheet = XLSX.utils.json_to_sheet(casosFiltradosAprobados);
         const workbook = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(workbook, worksheet, "Aprobados");
-        XLSX.writeFile(workbook, "Reporte_Conciliado_Aprobados.xlsx"); // <-- Asegúrate de que cierre así
-    } catch(excelErr) {
-        console.error("Error generando archivo Excel local:", excelErr);
+        XLSX.writeFile(workbook, "Reporte_Conciliado_Aprobados.xlsx");
+    } catch (e) {
+        console.error("Error al generar el archivo Excel de salida:", e);
+        alert("Ocurrió un error al descargar el reporte.");
     }
 }
 
