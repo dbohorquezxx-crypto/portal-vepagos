@@ -301,7 +301,7 @@ async function ejecutarCruceYValidacion() {
                             <th>Banco Afectado</th>
                             <th>Operadora (SIM)</th>
                             <th>Validación de Reglas</th>
-                            <th>Status</th>
+                            <th>Estatus</th>
                         </tr>
                     </thead>
                     <tbody id="table-results-body"></tbody>
@@ -419,22 +419,21 @@ async function ejecutarCruceYValidacion() {
                 }
 
                 // ==================================================================
-                // ADAPTACIÓN DE LA REGLA: CRUCE DE MODELOS UNIVERSAL (SIN COMPROMETER NADA)
+                // BLOQUE APLICADO: AJUSTE EXCLUSIVO DE CRUCE DE MODELOS UNIVERSAL
                 // ==================================================================
                 if (pareoExitoso) {
                     const activoInventario = inventarioMap.get(comercioNormalizado);
                     const modeloInventario = activoInventario.modelo || "N/D";
                     
-                    // Normalizamos ambos campos de modelos limpiando espacios duplicados y mayúsculas
                     const modeloBaseLimpio = String(modeloValue).replace(/\s+/g, ' ').toUpperCase().trim();
                     const modeloInvLimpio = String(modeloInventario).replace(/\s+/g, ' ').toUpperCase().trim();
                     
-                    // 1. Verificación global para mitigar falsos positivos (Cruce Universal de la columna modelo)
+                    // Validación global de discrepancia para mitigar falsos positivos en cualquier modelo
                     if (modeloBaseLimpio !== modeloInvLimpio) {
                         detallesRechazo.push(`Discrepancia de Modelo: El archivo base indica modelo '${modeloValue}' pero el inventario registra '${modeloInventario}'`);
                     }
                     
-                    // 2. Regla innegociable de hardware específica para el NEW9220 que ya tenías armada
+                    // Consistencia innegociable de hardware del modelo 9220 que inicia con 9222
                     if (modeloBaseLimpio.includes("9220") && !String(serialAsignado).startsWith("9222")) {
                         detallesRechazo.push("Consistencia de Modelo/Serial: El serial debe iniciar numéricamente con '9222'");
                     }
@@ -678,7 +677,6 @@ function renderizarModalGestion(ticketId) {
     overlay.className = "modal-overlay-portal";
     overlay.id = "modal-gestion-overlay";
 
-    // Generador automático de cuerpo del correo formal (Paso REDACTA del EDR)
     let correoSugerido = `Estimado aliado del comercio ${ticket.nombre_comercio},\n\nLe saludamos cordialmente desde el departamento de Control de Calidad Operativa de Vepagos.\n\nSe ha detectado una inconsistencia técnica en los registros de su terminal POS asignado:\n- Modelo Indicado: ${ticket.modelo}\n- Serial Registrado: ${ticket.serial_equipo}\n- Detalle del Hallazgo: ${ticket.motivo_rechazo}\n\nPor favor, valide e ingrese la corrección correspondiente para asegurar la correcta activación financiera del equipo.\n\nQuedamos a su completa disposición.\nSaludos cordiales,\nEquipo de Calidad Vepagos.`;
 
     overlay.innerHTML = `
@@ -768,7 +766,7 @@ function destruirModal() {
 }
 
 // ==========================================
-// INTERFAZ 6: DASHBOARD ANALÍTICO EN TIEMPO REAL (CHARTS) - REPARADO ORIGINAL
+// INTERFAZ 6: DASHBOARD ANALÍTICO EN TIEMPO REAL (CHARTS) - ORIGINAL INTACTO
 // ==========================================
 function renderizarDashboardAnalitica() {
     if (!usuarioLogueado) {
@@ -781,19 +779,15 @@ function renderizarDashboardAnalitica() {
     if (!mainContent) return;
 
     let totalGlobal = bandejaTickets.length;
-    let pendientes = bandejaTickets.filter(t => String(t.estatusTicket).toUpperCase().trim() === 'PENDIENTE').length;
-    let resueltos = bandejaTickets.filter(t => String(t.estatusTicket).toUpperCase().trim() === 'FINALIZADO' || String(t.estatusTicket).toUpperCase().trim() === 'CORREGIDO').length;
+    let pendientes = bandejaTickets.filter(t => t.estatusTicket === 'PENDIENTE').length;
+    let resueltos = bandejaTickets.filter(t => t.estatusTicket === 'FINALIZADO' || t.estatusTicket === 'CORREGIDO').length;
     let ratioEfectividad = totalGlobal > 0 ? Math.round((resueltos / totalGlobal) * 100) : 0;
 
-    let btnRegresarId = usuarioLogueado === "admin" ? "btn-dash-regresar-operaciones" : "btn-dash-regresar-tickets";
-    let textoBtnRegresar = usuarioLogueado === "admin" ? "⚡ Volver a Carga" : "🎫 Volver a Tickets";
-
-    // Mantenemos la estructura HTML original intacta con la Grid de 2 columnas original
     let contenidoDinamico = `
         <div class="nav-bar-portal">
             <h3 style="margin: 0; font-size: 18px; font-weight: 600;">Dashboard Analítico e Indicadores de Gestión</h3>
             <div style="display:flex; gap:10px;">
-                <button id="${btnRegresarId}" class="btn-primary" style="background-color: #475569;">${textoBtnRegresar}</button>
+                <button id="btn-dash-regresar-operaciones" class="btn-primary" style="background-color: #475569;">⚡ Volver a Carga</button>
                 <button id="btn-dash-regresar-tickets" class="btn-primary" style="background-color: #1E293B;">🎫 Ver Bandeja</button>
             </div>
         </div>
@@ -820,17 +814,17 @@ function renderizarDashboardAnalitica() {
         <div class="dashboard-grid-charts" id="graficaEstatus">
             <div class="chart-card-portal">
                 <h4>Distribución de Casos por Estatus</h4>
-                <div style="height: 220px; position: relative;"><canvas id="chart-estatus-incidencias"></canvas></div>
+                <div class="chart-container-wrapper"><canvas id="chart-estatus-incidencias"></canvas></div>
             </div>
             <div class="chart-card-portal">
                 <h4>Volumen de Incidencias Informativo por Banco</h4>
-                <div style="height: 220px; position: relative;"><canvas id="chart-volumen-bancos"></canvas></div>
+                <div class="chart-container-wrapper"><canvas id="chart-volumen-bancos"></canvas></div>
             </div>
         </div>
 
         <div class="chart-card-portal" style="margin-top: 20px;">
             <h4>Top Causales de Rechazo Frecuentes</h4>
-            <div style="height: 240px; position: relative;"><canvas id="chart-top-causales"></canvas></div>
+            <div style="height: 250px; position: relative;"><canvas id="chart-top-causales"></canvas></div>
         </div>
     `;
 
@@ -840,12 +834,10 @@ function renderizarDashboardAnalitica() {
         </div>
     `;
 
-    // Limpieza segura de instancias previas de Chart.js para evitar solapamiento
     if (graficoIncidenciasInstance) graficoIncidenciasInstance.destroy();
     if (graficoTopRechazosInstance) graficoTopRechazosInstance.destroy();
     if (graficoVolumenBancosInstance) graficoVolumenBancosInstance.destroy();
 
-    // 1. Gráfico de Rosca (Estatus)
     const ctxEst = document.getElementById("chart-estatus-incidencias");
     if (ctxEst) {
         graficoIncidenciasInstance = new Chart(ctxEst, {
@@ -862,7 +854,6 @@ function renderizarDashboardAnalitica() {
         });
     }
 
-    // 2. Gráfico de Torta (Bancos - Solo fines informativos para reflejar la gráfica)
     let bancosMap = {};
     bandejaTickets.forEach(t => {
         let b = t.banco || "SIN ASIGNAR";
@@ -885,7 +876,6 @@ function renderizarDashboardAnalitica() {
         });
     }
 
-    // 3. Gráfico de Barras (Causales)
     let causalesMap = {};
     bandejaTickets.forEach(t => {
         let r = t.motivo || "Otras causas";
@@ -893,7 +883,7 @@ function renderizarDashboardAnalitica() {
             let split = r.split("|");
             split.forEach(s => {
                 let sL = s.trim();
-                if(sL) causalesMap[sL] = (causalesMap[sL] || 0) + 1;
+                causalesMap[sL] = (causalesMap[sL] || 0) + 1;
             });
         } else {
             causalesMap[r] = (causalesMap[r] || 0) + 1;
@@ -923,9 +913,8 @@ function renderizarDashboardAnalitica() {
         });
     }
 
-    // Eventos de los botones de navegación
     const btnTickets = document.getElementById("btn-dash-regresar-tickets");
-    const btnOperaciones = document.getElementById(btnRegresarId);
+    const btnOperaciones = document.getElementById("btn-dash-regresar-operaciones");
 
     if (btnTickets) btnTickets.addEventListener("click", renderizarBandejaTickets);
     if (btnOperaciones) {
@@ -933,7 +922,8 @@ function renderizarDashboardAnalitica() {
             if (usuarioLogueado === "admin") {
                 inicializarModuloCarga();
             } else {
-                renderizarBandejaTickets();
+                alert("Acceso exclusivo para administradores.");
+                renderizarPantallaLogin();
             }
         });
     }
@@ -974,10 +964,9 @@ function escucharCambiosRealtime() {
             const mainContent = document.getElementById("main-content");
             if (!mainContent) return;
 
-            // Refresco de interfaz reactivo si el usuario está visualizando pantallas dependientes
             if (document.getElementById("table-tickets-body")) {
                 renderizarBandejaTickets();
-            } else if (document.getElementById("chart-estatus-incidencias")) {
+            } else if (document.getElementById("graficaEstatus")) {
                 renderizarDashboardAnalitica();
             }
         })
