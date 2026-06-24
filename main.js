@@ -1,17 +1,18 @@
-// 1. Credenciales de tu proyecto
+// ==========================================
+// 1. CREDENCIALES Y CONFIGURACIÓN INICIAL
+// ==========================================
 const CLIENT_URL_SB = "https://mjwqgweljrjhkrgbfjsx.supabase.co";
 const CLIENT_KEY_SB = "sb_publishable_ymJmckuJN9ofmUhbTWXcSw__ulvnuwV";
 
-// 2. Crear la conexión real usando un objeto global seguro
+// Crear la conexión real usando un objeto global seguro
 window.supabaseConexion = supabase.createClient(CLIENT_URL_SB, CLIENT_KEY_SB);
 
-// 3. Clonamos la referencia para que todo tu código de abajo funcione sin cambiar una sola línea
+// Clonamos la referencia para que todo tu código de abajo funcione sin cambiar una sola línea
 var supabase = window.supabaseConexion;
 
 // ==========================================
 // MOTOR CENTRAL - GESTIÓN OPERATIVA VEPAGOS (VERSIÓN ESTABLE Y AUDITADA)
 // ==========================================
-
 let datosBase = [];
 let datosRechazos = [];
 let casosFiltradosAprobados = [];
@@ -41,7 +42,6 @@ function arrancarPortal() {
 // Canal de Tiempo Real de Supabase
 function activarTiempoReal() {
     if (supabaseChannel) return;
-    
     supabaseChannel = supabase
         .channel('cambios-tickets-global')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'tickets' }, async (payload) => {
@@ -49,7 +49,7 @@ function activarTiempoReal() {
             
             // 1. Sincronizamos los datos de la nube
             await recuperarBandejaSeguraSilencioso();
-            
+    
             // 2. FORZAMOS EL REFRESCO VISUAL INMEDIATO
             if (document.getElementById("table-tickets-body")) {
                 renderizarBandejaTickets();
@@ -68,7 +68,6 @@ async function recuperarBandejaSegura() {
             .from('tickets')
             .select('*')
             .order('fecha_creacion', { ascending: false });
-
         if (error) throw error;
 
         // Mapeamos los campos reales de la base de datos
@@ -80,10 +79,9 @@ async function recuperarBandejaSegura() {
             sim: t.sim_card,
             banco: t.banco,
             motivo: t.motivo_rechazo,
-            estatusTicket: t.estatus, // Mantiene tu lógica visual unificada (PENDIENTE, CORREGIDO, FINALIZADO)
+            estatusTicket: t.estatus, // PENDIENTE, CORREGIDO, FINALIZADO
             observacionAuditor: t.auditoria_observacion
         }));
-        
         console.log("Bandeja sincronizada desde la nube con", bandejaTickets.length, "registros.");
     } catch (e) {
         console.error("Error al sincronizar con Supabase. Usando bandeja vacía de respaldo...", e);
@@ -130,22 +128,15 @@ function normalizarSerial(ser) {
     return ser ? String(ser).replace(/[^a-zA-Z0-9]/g, "").toLowerCase() : "";
 }
 
-function destruirGraficosDashboard() {
-    if (graficoIncidenciasInstance) { graficoIncidenciasInstance.destroy(); graficoIncidenciasInstance = null; }
-    if (graficoTopRechazosInstance) { graficoTopRechazosInstance.destroy(); graficoTopRechazosInstance = null; }
-    if (graficoVolumenBancosInstance) { graficoVolumenBancosInstance.destroy(); graficoVolumenBancosInstance = null; }
-}
-
 // ==========================================
-// MÓDULO 0: ACCESO MULTIPERFIL
+// MÓDULO 0: ACCESO MULTIPERFIL (CON CLAVE SEGURA)
 // ==========================================
 function renderizarPantallaLogin() {
     const mainContent = document.getElementById("main-content");
     if (!mainContent) return;
 
     usuarioLogueado = null;
-    destruirGraficosDashboard(); 
-
+    destruirGraficosDashboard();
     mainContent.innerHTML = `
         <div class="login-wrapper">
             <div class="login-card">
@@ -172,8 +163,18 @@ function renderizarPantallaLogin() {
 
     if (btnAdmin) {
         btnAdmin.addEventListener("click", () => {
-            usuarioLogueado = "admin";
-            inicializarModuloCarga();
+            // COMPUERTA DE SEGURIDAD ACTIVADA
+            const CLAVE_ADMIN_CORRECTA = "admin1234";
+            const claveIngresada = prompt("Por favor, introduzca la clave de seguridad para el perfil de Administrador:");
+            
+            if (claveIngresada === null) return; // Si cancela, cierra la ventana sin error
+
+            if (claveIngresada === CLAVE_ADMIN_CORRECTA) {
+                usuarioLogueado = "admin";
+                inicializarModuloCarga();
+            } else {
+                alert("Clave incorrecta. Acceso denegado por motivos de seguridad.");
+            }
         });
     }
 
@@ -184,7 +185,6 @@ function renderizarPantallaLogin() {
         });
     }
 }
-
 // ==========================================
 // MÓDULO 1: CARGA DE ARCHIVOS (Admin)
 // ==========================================
@@ -241,7 +241,6 @@ function inicializarModuloCarga() {
             </div>
         </div>
     `;
-
     configurarEventosCargaAdmin();
 }
 
@@ -261,7 +260,7 @@ function configurarEventosCargaAdmin() {
                 const firstSheetName = workbook.SheetNames[0];
                 const worksheet = workbook.Sheets[firstSheetName];
                 const jsonRows = XLSX.utils.sheet_to_json(worksheet, { raw: false, defval: "" });
-
+                
                 if (tipo === 'base') {
                     datosBase = jsonRows;
                     console.log("Archivo Base cargado:", datosBase.length, "filas");
@@ -299,7 +298,7 @@ function configurarEventosCargaAdmin() {
 
     setupCard("drop-zone-base", "file-base", "status-base", "base");
     setupCard("drop-zone-rechazos", "file-rechazos", "status-rechazos", "rechazos");
-
+    
     const btnProcesar = document.getElementById("btn-procesar");
     if (btnProcesar) {
         btnProcesar.addEventListener("click", () => {
@@ -337,7 +336,6 @@ async function ejecutarCruceYValidacion() {
     if (!mainContent) return;
     
     casosFiltradosAprobados = [];
-    
     if (!Array.isArray(datosBase)) datosBase = [];
     if (!Array.isArray(datosRechazos)) datosRechazos = [];
     
@@ -395,7 +393,6 @@ async function ejecutarCruceYValidacion() {
     await recuperarBandejaSegura();
 
     const inventarioMap = new Map();
-    
     if (datosRechazos.length > 0) {
         datosRechazos.forEach((item, idxRechazo) => {
             if (!item) return;
@@ -412,7 +409,6 @@ async function ejecutarCruceYValidacion() {
                 if (razonSaneada) {
                     let serialLimpio = kSerial && item[kSerial] !== undefined ? String(item[kSerial]).trim().replace(/\.0+$/, '') : "";
                     if (serialLimpio === "0" || serialLimpio === "undefined" || serialLimpio === "null") serialLimpio = "";
-
                     let simLimpia = kSim && item[kSim] !== undefined ? String(item[kSim]).trim() : "No posee";
                     
                     let operadoraDetectada = "Indeterminada";
@@ -456,13 +452,11 @@ async function ejecutarCruceYValidacion() {
                 
                 const campoComercio = keysBase.find(k => /^nombre$|^comercio$|^razon$|^razón$|^social$/i.test(k)) || 
                                       keysBase.find(k => /nombre|comercio|razon|razón|social/i.test(k)) || "";
-                
                 const campoAlmacen = keysBase.find(k => /almacen|almacén/i.test(k)) || "";
                 const campoModelo = keysBase.find(k => /^modelo$|^equipo$/i.test(k)) || keysBase.find(k => /modelo|equipo/i.test(k)) || "";
-                
                 const campoBanco = keysBase.find(k => /^banco$|^entidad$|^banco_afectado$|^operadora$/i.test(k)) || 
                                    keysBase.find(k => /banco|entidad/i.test(k)) || "";
-
+                
                 const comercioValue = campoComercio && fila[campoComercio] !== undefined ? String(fila[campoComercio]).trim() : "N/D";
                 const almacenValue = campoAlmacen && fila[campoAlmacen] !== undefined ? String(fila[campoAlmacen]).trim() : "N/D";
                 const modeloValue = campoModelo && fila[campoModelo] !== undefined ? String(fila[campoModelo]).trim() : "N/D";
@@ -476,7 +470,6 @@ async function ejecutarCruceYValidacion() {
                 }
 
                 const comercioNormalizado = normalizarTexto(comercioValue);
-
                 let serialAsignado = "";
                 let simcardAsignada = "No posee";
                 let operadoraSim = "Indeterminada";
@@ -498,7 +491,8 @@ async function ejecutarCruceYValidacion() {
                     pareoExitoso = false; 
                 }
 
-                if (pareoExitoso && (String(modeloValue).includes("9220") || String(modeloValue).includes("9220 CREDICARD"))) {
+                // REGLA: Los modelos NEW9220 deben iniciar estrictamente con 9222
+                if (pareoExitoso && (String(modeloValue).includes("9220") || String(modeloValue).includes("9220 CREDICARD") || String(modeloValue).toUpperCase().includes("NEW9220"))) {
                     if (!String(serialAsignado).startsWith("9222")) {
                         detallesRechazo.push("Consistencia de Modelo/Serial: El serial debe iniciar numéricamente con '9222'");
                     }
@@ -507,7 +501,6 @@ async function ejecutarCruceYValidacion() {
                     const modeloInventario = activoInventario.modelo || "";
                     const modeloBaseLimpio = String(modeloValue).replace(/\s+/g, ' ').toUpperCase().trim();
                     const modeloInvLimpio = String(modeloInventario).replace(/\s+/g, ' ').toUpperCase().trim();
-                    
                     const esCredicardBase = modeloBaseLimpio.includes("CREDICARD");
                     const esCredicardInv = modeloInvLimpio.includes("CREDICARD");
                     
@@ -524,7 +517,6 @@ async function ejecutarCruceYValidacion() {
                     let SIMesMovilnet = /^895806/.test(simStr);
                     let SIMesDigitel = /^895802/.test(simStr);
                     let SIMesMovistar = /^895804/.test(simStr);
-
                     let SerialTerminaEnLetra = /[a-zA-Z]/.test(lastChar);
                     let SerialTerminaEnNumero = /\d/.test(lastChar);
 
@@ -566,7 +558,6 @@ async function ejecutarCruceYValidacion() {
                 if (!theRulePasses) {
                     let identificadorSerial = (serialAsignado && serialAsignado !== "N/D") ? serialAsignado : ("EMPTY-" + index);
                     let generadoId = "TK-" + Math.floor(1000 + Math.random() * 9000);
-                    
                     const { data: ticketRemoto } = await supabase
                         .from('tickets')
                         .select('*')
@@ -581,7 +572,7 @@ async function ejecutarCruceYValidacion() {
                             modelo: modeloValue,
                             serial_equipo: identificadorSerial,
                             sim_card: simcardAsignada,
-                            banco: bancoValue,
+                            banco: bancoValue, // Se mantiene únicamente con fines informativos en el Dashboard
                             motivo_rechazo: detalleReglaTexto,
                             estatus: 'PENDIENTE',
                             auditoria_observacion: ''
@@ -629,10 +620,7 @@ async function renderizarBandejaTickets() {
     const mainContent = document.getElementById("main-content");
     if (!mainContent) return;
 
-    // 1. Traer datos frescos de la nube
     await recuperarBandejaSegura();
-
-    // 2. Construcción de barra de navegación dinámica según rol
     let botonVolver = "";
     let botonDash = `<button id="btn-nav-dash-analista" class="btn-primary" style="background-color: var(--verde-exito); border: none; padding: 8px 16px; border-radius: 6px; color: var(--azul-corporativo); cursor: pointer; font-weight: 700; margin-right: 10px;">📈 Dashboard</button>`;
     
@@ -684,7 +672,7 @@ async function renderizarBandejaTickets() {
                             <th>Motivo de Rechazo</th>
                             <th>Estatus</th>
                             <th>Acciones</th>
-                            <th>Auditoría / Observaciones</th>
+                            <th>Auditoría / Observations</th>
                         </tr>
                     </thead>
                     <tbody id="table-tickets-body"></tbody>
@@ -693,7 +681,6 @@ async function renderizarBandejaTickets() {
         </div>
     `;
 
-    // Asignación de manejadores de navegación segura
     if (usuarioLogueado === "admin") {
         document.getElementById("btn-volver-admin").addEventListener("click", inicializarModuloCarga);
         document.getElementById("btn-nav-dash-analista").addEventListener("click", renderizarDashboardAnalitica);
@@ -704,7 +691,6 @@ async function renderizarBandejaTickets() {
 
     const tbody = document.getElementById("table-tickets-body");
     if (!tbody) return;
-
     if (bandejaTickets.length === 0) {
         tbody.innerHTML = `<tr><td colspan="10" style="text-align:center; padding: 30px; font-style:italic; color:#94a3b8;">No existen incidencias asignadas o cargadas en el sistema.</td></tr>`;
         updateKpi(0, 0, 0);
@@ -714,7 +700,6 @@ async function renderizarBandejaTickets() {
     let contPendientes = 0;
     let contCorregidos = 0;
     let contFinalizados = 0;
-
     bandejaTickets.forEach((ticket) => {
         const estatusUpper = String(ticket.estatusTicket).toUpperCase().trim();
 
@@ -728,17 +713,14 @@ async function renderizarBandejaTickets() {
 
         if (estatusUpper === "PENDIENTE") {
             estatusBadge = `<span class="status-badge" style="background-color:#fef3c7; color:#d97706; border-color:#f59e0b; letter-spacing:0.5px; font-weight:700; text-transform:uppercase; padding:6px 12px; border-radius:20px; font-size:11px; border:1px solid transparent;">⏳ Pendiente</span>`;
-            
             if (usuarioLogueado === "analista") {
                 accionesHtml = `<button class="btn-primary btn-corregir" data-id="${ticket.id}" style="background-color:var(--azul-corporativo); padding:6px 12px; font-size:12px;">Marcar como Corregido</button>`;
             } else {
                 accionesHtml = `<span style="font-size:11px; font-style:italic; color:#64748b;">Acceso restringido a operador</span>`;
             }
             auditoriaHtml = `<span style="color:#64748b; font-size:12px; font-style:italic;">Esperando corrección...</span>`;
-        
         } else if (estatusUpper === "CORREGIDO" || estatusUpper === "NOTIFICADO") {
             estatusBadge = `<span class="status-badge" style="background-color:#dbeafe; color:#2563eb; border-color:#bfdbfe; letter-spacing:0.5px; font-weight:700; text-transform:uppercase; padding:6px 12px; border-radius:20px; font-size:11px; border:1px solid transparent;">🔔 Notificado (Corregido)</span>`;
-            
             if (usuarioLogueado === "analista") {
                 accionesHtml = `<span style="font-size:12px; color:var(--verde-exito); font-weight:500;">✓ Notificación enviada</span>`;
             } else {
@@ -758,7 +740,6 @@ async function renderizarBandejaTickets() {
             } else {
                 auditoriaHtml = `<span style="font-size:12px; color:#3b82f6; font-style:italic;">En revisión por auditoría...</span>`;
             }
-        
         } else if (estatusUpper === "FINALIZADO") {
             estatusBadge = `<span class="status-badge status-resuelto-corporativo" style="background-color:#d1fae5; color:#065f46; padding:6px 12px; border-radius:20px; font-size:11px; font-weight:700;">✓ Finalizado (Aprobado)</span>`;
             accionesHtml = `<span style="font-size:12px; color:#097c47; font-weight:600;">Incidencia Cerrada</span>`;
@@ -794,20 +775,14 @@ function updateKpi(p, c, f) {
     if(fin) fin.innerText = f;
 }
 
-// ==========================================
-// CONFIGURACIÓN DE EVENTOS (ACTUALIZANDO EN SUPABASE)
-// ==========================================
 function configurarEventosTickets() {
-    // 1. OPERACIÓN DEL ANALISTA: MARCAR COMO CORREGIDO
     document.querySelectorAll(".btn-corregir").forEach(button => {
         button.addEventListener("click", async (e) => {
             const ticketId = e.target.getAttribute("data-id");
-            
             const { error } = await supabase
                 .from('tickets')
                 .update({ estatus: "CORREGIDO" })
                 .eq('ticket_id', ticketId);
-
             if (!error) {
                 alert(`¡Se ha actualizado el estatus a "Corregido" en la nube!`);
                 destruirGraficosDashboard();
@@ -819,7 +794,6 @@ function configurarEventosTickets() {
         });
     });
 
-    // 2. OPERACIÓN DEL ADMIN: FINALIZAR CASO
     document.querySelectorAll(".btn-finalizar").forEach(button => {
         button.addEventListener("click", async (e) => {
             const ticketId = e.target.getAttribute("data-id");
@@ -844,7 +818,6 @@ function configurarEventosTickets() {
         });
     });
 
-    // 3. OPERACIÓN DEL ADMIN: REABRIR CASO
     document.querySelectorAll(".btn-reabrir").forEach(button => {
         button.addEventListener("click", async (e) => {
             const ticketId = e.target.getAttribute("data-id");
@@ -879,10 +852,7 @@ function configurarEventosTickets() {
 // MÓDULO 4: DASHBOARD PREMIUM (LECTURA ACTUALIZADA)
 // ==========================================
 async function renderizarDashboardAnalitica() {
-    // 1. Leemos los datos más recientes desde Supabase
     const { data: ticketsFrescos } = await supabase.from('tickets').select('*');
-    
-    // 2. Sincronizamos la estructura local mapeada
     bandejaTickets = (ticketsFrescos || []).map(t => ({
         id: t.ticket_id,
         comercio: t.nombre_comercio,
@@ -895,23 +865,16 @@ async function renderizarDashboardAnalitica() {
         observacionAuditor: t.auditoria_observacion
     }));
     
-    // 3. Cálculos independientes por cada métrica
     const totalIncidentes = bandejaTickets.length;
-    
-    const totalFinalizados = bandejaTickets.filter(t => 
-        String(t.estatusTicket).toUpperCase().trim() === "FINALIZADO"
-    ).length;
-
+    const totalFinalizados = bandejaTickets.filter(t => String(t.estatusTicket).toUpperCase().trim() === "FINALIZADO").length;
     const totalNotificados = bandejaTickets.filter(t => {
         const est = String(t.estatusTicket).toUpperCase().trim();
         return est.includes("CORREGIDO") || est.includes("NOTIFICADO");
     }).length;
-
     const totalRechazosPuros = totalIncidentes - (totalFinalizados + totalNotificados);
 
     const conteoBancos = {};
     const conteoRechazos = {};
-
     bandejaTickets.forEach(ticket => {
         let bancoSaneado = ticket.banco ? ticket.banco.trim().toUpperCase() : "NO ESPECIFICADO";
         if (bancoSaneado === "SIN ASIGNAR" || bancoSaneado === "") {
@@ -948,7 +911,6 @@ async function renderizarDashboardAnalitica() {
     const rechazosLabels = Object.keys(conteoRechazos);
     const rechazosData = Object.values(conteoRechazos);
 
-    // 4. Estructura HTML alineada al manual (Colores de marca e inclusión del Lema Oficial)
     const htmlDashboard = `
         <div style="display:flex; flex-direction:column; gap:24px;">
             <div class="upload-header" style="margin:0; background: #FFFFFF; padding: 20px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); border-left: 5px solid #001F60;">
@@ -991,15 +953,14 @@ async function renderizarDashboardAnalitica() {
     renderizarEstructuraBasePortal(htmlDashboard);
     destruirGraficosDashboard();
 
-    // 5. Instanciación de Gráficos usando colores hex planos del manual para Chart.js
     const ctxEstatus = document.getElementById('graficaEstatus').getContext('2d');
-    window.graficoIncidenciasInstance = new Chart(ctxEstatus, {
+    graficoIncidenciasInstance = new Chart(ctxEstatus, {
         type: 'doughnut',
         data: {
             labels: ['Finalizados', 'Notificados (Corregidos)', 'Incidencias Restantes'],
             datasets: [{
                 data: [totalFinalizados, totalNotificados, totalRechazosPuros],
-                backgroundColor: ['#00B36C', '#3B82F6', '#E63946'], // Sincronizado con Verde Vepagos y Rojo Alerta
+                backgroundColor: ['#00B36C', '#3B82F6', '#E63946'],
                 borderWidth: 2,
                 borderColor: '#FFFFFF'
             }]
@@ -1008,13 +969,13 @@ async function renderizarDashboardAnalitica() {
     });
 
     const ctxRechazos = document.getElementById('graficaTopRechazos').getContext('2d');
-    window.graficoTopRechazosInstance = new Chart(ctxRechazos, {
+    graficoTopRechazosInstance = new Chart(ctxRechazos, {
         type: 'pie',
         data: {
             labels: rechazosLabels.length > 0 ? rechazosLabels : ['Sin registros'],
             datasets: [{
                 data: rechazosData.length > 0 ? rechazosData : [0],
-                backgroundColor: ['#001F60', '#00B36C', '#F59E0B', '#3B82F6', '#EC4899', '#8B5CF6'], // Combinación Navy y Verde Vepagos
+                backgroundColor: ['#001F60', '#00B36C', '#F59E0B', '#3B82F6', '#EC4899', '#8B5CF6'],
                 borderWidth: 1
             }]
         },
@@ -1022,14 +983,14 @@ async function renderizarDashboardAnalitica() {
     });
 
     const ctxBancos = document.getElementById('graficaVolumenBancos').getContext('2d');
-    window.graficoVolumenBancosInstance = new Chart(ctxBancos, {
+    graficoVolumenBancosInstance = new Chart(ctxBancos, {
         type: 'bar',
         data: {
             labels: bancosLabels.length > 0 ? bancosLabels : ['Sin datos'],
             datasets: [{
                 label: 'Cantidad de Casos',
                 data: bancosData.length > 0 ? bancosData : [0],
-                backgroundColor: '#001F60', // Barras en Azul Navy oficial
+                backgroundColor: '#001F60',
                 borderRadius: 4
             }]
         },
@@ -1046,17 +1007,17 @@ async function renderizarDashboardAnalitica() {
 // FUNCIÓN AUXILIAR: DESTRUCCIÓN SEGURA DE INSTANCIAS CHART
 // ==========================================
 function destruirGraficosDashboard() {
-    if (window.graficoIncidenciasInstance && typeof window.graficoIncidenciasInstance.destroy === 'function') {
-        window.graficoIncidenciasInstance.destroy();
-        window.graficoIncidenciasInstance = null;
+    if (graficoIncidenciasInstance && typeof graficoIncidenciasInstance.destroy === 'function') {
+        graficoIncidenciasInstance.destroy();
+        graficoIncidenciasInstance = null;
     }
-    if (window.graficoTopRechazosInstance && typeof window.graficoTopRechazosInstance.destroy === 'function') {
-        window.graficoTopRechazosInstance.destroy();
-        window.graficoTopRechazosInstance = null;
+    if (graficoTopRechazosInstance && typeof graficoTopRechazosInstance.destroy === 'function') {
+        graficoTopRechazosInstance.destroy();
+        graficoTopRechazosInstance = null;
     }
-    if (window.graficoVolumenBancosInstance && typeof window.graficoVolumenBancosInstance.destroy === 'function') {
-        window.graficoVolumenBancosInstance.destroy();
-        window.graficoVolumenBancosInstance = null;
+    if (graficoVolumenBancosInstance && typeof graficoVolumenBancosInstance.destroy === 'function') {
+        graficoVolumenBancosInstance.destroy();
+        graficoVolumenBancosInstance = null;
     }
 }
 
@@ -1093,5 +1054,24 @@ function renderizarEstructuraBasePortal(contenidoDinamico) {
                 renderizarPantallaLogin();
             }
         });
+    }
+}
+
+// ==========================================
+// FUNCIÓN DE DESCARGA (RESPALDO OBLIGATORIO)
+// ==========================================
+function descargarExcelAprobados() {
+    if (casosFiltradosAprobados.length === 0) {
+        alert("No hay registros aprobados para exportar en este ciclo.");
+        return;
+    }
+    try {
+        const worksheet = XLSX.utils.json_to_sheet(casosFiltradosAprobados);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, "Aprobados");
+        XLSX.writeFile(workbook, "Reporte_Conciliado_Aprobados.xlsx");
+    } catch (e) {
+        console.error("Error al generar el archivo Excel de salida:", e);
+        alert("Ocurrió un error al descargar el reporte.");
     }
 }
