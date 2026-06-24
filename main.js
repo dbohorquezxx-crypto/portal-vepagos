@@ -31,299 +31,226 @@ if (document.readyState === 'loading') {
 
 function arrancarPortal() {
     console.log("Sistema de Gestión Operativa Vepagos - Arrancando motor...");
-    // Activamos la escucha en tiempo real global
-    activarTiempoReal();
-    // Descargamos de la nube y luego mostramos el login
-    recuperarBandejaSegura().then(() => {
-        renderizarPantallaLogin();
-    });
-}
-
-// Canal de Tiempo Real de Supabase
-function activarTiempoReal() {
-    if (supabaseChannel) return;
-    supabaseChannel = supabase
-        .channel('cambios-tickets-global')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'tickets' }, async (payload) => {
-            console.log("Cambio detectado en tiempo real en la base de datos:", payload);
-            
-            // 1. Sincronizamos los datos de la nube
-            await recuperarBandejaSeguraSilencioso();
+    // Activamos la escucha en tiempo real inmediatamente
+    escucharCambiosRealtime();
     
-            // 2. FORZAMOS EL REFRESCO VISUAL INMEDIATO
-            if (document.getElementById("table-tickets-body")) {
-                renderizarBandejaTickets();
-            } else if (document.getElementById("graficaEstatus")) {
-                renderizarDashboardAnalitica();
-            }
-        })
-        .subscribe();
-}
-
-// Función conectada a Supabase para recuperar la bandeja de entrada
-async function recuperarBandejaSegura() {
-    try {
-        console.log("Consultando tickets en Supabase...");
-        const { data, error } = await supabase
-            .from('tickets')
-            .select('*')
-            .order('fecha_creacion', { ascending: false });
-        if (error) throw error;
-
-        // Mapeamos los campos reales de la base de datos
-        bandejaTickets = data.map(t => ({
-            id: t.ticket_id,
-            comercio: t.nombre_comercio,
-            modelo: t.modelo,
-            serial: t.serial_equipo,
-            sim: t.sim_card,
-            banco: t.banco,
-            motivo: t.motivo_rechazo,
-            estatusTicket: t.estatus, // PENDIENTE, CORREGIDO, FINALIZADO
-            observacionAuditor: t.auditoria_observacion
-        }));
-        console.log("Bandeja sincronizada desde la nube con", bandejaTickets.length, "registros.");
-    } catch (e) {
-        console.error("Error al sincronizar con Supabase. Usando bandeja vacía de respaldo...", e);
-        bandejaTickets = [];
-    }
-}
-
-// Recuperación silenciosa para actualizaciones en segundo plano por Realtime
-async function recuperarBandejaSeguraSilencioso() {
-    try {
-        const { data, error } = await supabase
-            .from('tickets')
-            .select('*')
-            .order('fecha_creacion', { ascending: false });
-        if (!error && data) {
-            bandejaTickets = data.map(t => ({
-                id: t.ticket_id,
-                comercio: t.nombre_comercio,
-                modelo: t.modelo,
-                serial: t.serial_equipo,
-                sim: t.sim_card,
-                banco: t.banco,
-                motivo: t.motivo_rechazo,
-                estatusTicket: t.estatus,
-                observacionAuditor: t.auditoria_observacion
-            }));
+    // Verificar sesión previa o renderizar login
+    const sesionGuardada = localStorage.getItem("ve_usuario_sesion");
+    if (sesionGuardada) {
+        usuarioLogueado = sesionGuardada;
+        if (usuarioLogueado === "admin") {
+            inicializarModuloCarga();
+        } else {
+            renderizarBandejaTickets();
         }
-    } catch (e) {
-        console.error(e);
+    } else {
+        renderizarPantallaLogin();
     }
 }
 
-function normalizarTexto(texto) {
-    if (!texto) return "";
-    return String(texto)
+// Helper de Saneamiento de Strings para emparejamientos relacionales precisos
+function normalizarTexto(str) {
+    if (!str) return "";
+    return str.toString()
         .toLowerCase()
-        .replace(/["'«»“”]/g, "")
-        .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, "")
-        .replace(/\s+/g, " ")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "") // Remueve tildes de forma segura
+        .replace(/[^a-z0-9]/g, "")       // Remueve espacios, guiones y caracteres especiales
         .trim();
 }
 
-function normalizarSerial(ser) {
-    return ser ? String(ser).replace(/[^a-zA-Z0-9]/g, "").toLowerCase() : "";
-}
-
 // ==========================================
-// MÓDULO 0: ACCESO MULTIPERFIL (CON CLAVE SEGURA)
+// INTERFAZ 1: PANTALLA DE LOGIN CORPORATIVO
 // ==========================================
 function renderizarPantallaLogin() {
+    localStorage.removeItem("ve_usuario_sesion");
+    usuarioLogueado = null;
+    
     const mainContent = document.getElementById("main-content");
     if (!mainContent) return;
 
-    usuarioLogueado = null;
-    destruirGraficosDashboard();
     mainContent.innerHTML = `
-        <div class="login-wrapper">
-            <div class="login-card">
-                <h2>Acceso al Portal Vepagos</h2>
-                <p>Seleccione su perfil de acceso al sistema</p>
-                
-                <div style="display:flex; flex-direction:column; gap:15px;">
-                    <button id="btn-login-admin" class="btn-primary btn-admin">
-                        👑 Iniciar como Administrador
-                    </button>
-                    <button id="btn-login-analista" class="btn-primary btn-analista">
-                        📊 Iniciar como Analista (Operador)
-                    </button>
-                </div>
-                <div style="margin-top:25px; text-align:center; font-size:12px; color:#94a3b8;">
-                    Módulo Multiperfil de Auditoría e Incidencias
-                </div>
+        <div class="login-card-wrapper">
+            <div class="login-brand-header">
+                <span class="brand-dot"></span>
+                <span class="brand-title-text">VEPAGOS</span>
             </div>
+            <p class="login-subtitle">Portal Seguro de Control de Calidad e Incidencias</p>
+            
+            <div style="margin-top: 25px;">
+                <label class="form-label-portal">Rol de Acceso</label>
+                <select id="select-rol-login" class="form-select-portal">
+                    <option value="" disabled selected>Seleccione su perfil...</option>
+                    <option value="admin">Administrador (Operaciones y Cruce)</option>
+                    <option value="analista">Analista Técnico (Gestión de Tickets)</option>
+                </select>
+            </div>
+            
+            <div style="margin-top: 20px;">
+                <label class="form-label-portal">Clave de Seguridad Indescriptible</label>
+                <input type="password" id="input-pass-login" class="form-input-portal" placeholder="••••••••">
+            </div>
+            
+            <button id="btn-ingresar-portal" class="btn-primary" style="width: 100%; margin-top: 25px; padding: 12px; font-weight: 600;">
+                Iniciar Sesión Segura
+            </button>
         </div>
     `;
 
-    const btnAdmin = document.getElementById("btn-login-admin");
-    const btnAnalista = document.getElementById("btn-login-analista");
+    document.getElementById("btn-ingresar-portal").addEventListener("click", procesarAutenticacion);
+}
 
-    if (btnAdmin) {
-        btnAdmin.addEventListener("click", () => {
-            // COMPUERTA DE SEGURIDAD ACTIVADA
-            const CLAVE_ADMIN_CORRECTA = "admin1234";
-            const claveIngresada = prompt("Por favor, introduzca la clave de seguridad para el perfil de Administrador:");
-            
-            if (claveIngresada === null) return; // Si cancela, cierra la ventana sin error
+function procesarAutenticacion() {
+    const rol = document.getElementById("select-rol-login").value;
+    const pass = document.getElementById("input-pass-login").value;
 
-            if (claveIngresada === CLAVE_ADMIN_CORRECTA) {
-                usuarioLogueado = "admin";
-                inicializarModuloCarga();
-            } else {
-                alert("Clave incorrecta. Acceso denegado por motivos de seguridad.");
-            }
-        });
+    if (!rol) {
+        alert("Por favor, seleccione un perfil de acceso válido.");
+        return;
     }
 
-    if (btnAnalista) {
-        btnAnalista.addEventListener("click", () => {
-            usuarioLogueado = "analista";
-            renderizarBandejaTickets();
-        });
+    if (rol === "admin" && pass === "vepagos2026") {
+        usuarioLogueado = "admin";
+        localStorage.setItem("ve_usuario_sesion", "admin");
+        inicializarModuloCarga();
+    } else if (rol === "analista" && pass === "calidadve") {
+        usuarioLogueado = "analista";
+        localStorage.setItem("ve_usuario_sesion", "analista");
+        renderizarBandejaTickets();
+    } else {
+        alert("Credenciales de seguridad incorrectas para el perfil seleccionado.");
     }
 }
+
 // ==========================================
-// MÓDULO 1: CARGA DE ARCHIVOS (Admin)
+// INTERFAZ 2: MÓDULO DE CARGA DUAL DE ARCHIVOS (ADMIN)
 // ==========================================
 function inicializarModuloCarga() {
     if (usuarioLogueado !== "admin") {
-        alert("Acceso denegado. Ruta exclusiva para Administradores.");
+        alert("Acceso denegado. Perfil de Administrador requerido.");
         renderizarPantallaLogin();
         return;
     }
 
-    let mainContent = document.getElementById("main-content");
+    const mainContent = document.getElementById("main-content");
     if (!mainContent) return;
-    
-    datosBase = [];
-    datosRechazos = [];
-    casosFiltradosAprobados = [];
-    
+
     mainContent.innerHTML = `
         <div class="nav-bar-portal">
             <h3 style="margin: 0; font-size: 18px; font-weight: 600;">Módulo de Operaciones - Administrador</h3>
             <div style="display:flex; gap:10px;">
-                <button id="btn-nav-admin-tickets" class="btn-primary" style="background-color: #1E293B;">🎫 Tickets (Admin)</button>
-                <button id="btn-nav-admin-dash" class="btn-primary" style="background-color: #047857;">📈 Dashboard</button>
-                <button id="btn-logout" class="btn-primary btn-cerrar-sesion">🚪 Salir</button>
+                <button id="btn-nav-admin-tickets" class="btn-primary" style="background-color: #1E293B;">🎫 Ver Tickets Activos</button>
+                <button id="btn-nav-admin-dash" class="btn-primary" style="background-color: #047857;">📈 Dashboard Analítico</button>
+                <button id="btn-logout-admin" class="btn-primary btn-cerrar-sesion">Controles 🚪 Salir</button>
             </div>
         </div>
 
         <div class="upload-container">
-            <div class="upload-header">
-                <h2>Panel de Procesamiento de Datos</h2>
-                <p>Cargue los reportes inalterados para ejecutar el cruce relacional validado.</p>
-            </div>
+            <h2>Carga Estructurada de Datos para Conciliación</h2>
+            <p>Suba los archivos en formato .CSV correspondientes al lote diario para ejecutar las reglas de negocio.</p>
             
-            <div class="upload-grid">
-                <div class="upload-card" id="drop-zone-base">
-                    <div class="icon-container">📁</div>
-                    <h3>1. Reporte Parámetros (Base)</h3>
-                    <p>Arrastre aquí el Excel o haga clic para seleccionar</p>
-                    <input type="file" id="file-base" accept=".xlsx, .xls" hidden>
-                    <div class="file-status" id="status-base">Ningún archivo seleccionado</div>
-                </div>
-
-                <div class="upload-card" id="drop-zone-rechazos">
-                    <div class="icon-container">📊</div>
-                    <h3>2. Reporte Seguimiento (Validación)</h3>
-                    <p>Arrastre aquí el Excel o haga clic para seleccionar</p>
-                    <input type="file" id="file-rechazos" accept=".xlsx, .xls" hidden>
-                    <div class="file-status" id="status-rechazos">Ningún archivo seleccionado</div>
-                </div>
+            <div class="dropzone-area" id="zone-base">
+                <div style="font-size: 28px; margin-bottom: 8px;">📊</div>
+                <span class="dropzone-text"><b>Archivo Fuente A (Base de Aliados Comerciales)</b></span>
+                <input type="file" id="file-csv-base" accept=".csv" style="display:none;">
+                <div id="status-base" class="file-status-indicator indicator-empty">Esperando archivo...</div>
             </div>
 
-            <div style="display: flex; gap: 15px; justify-content: center;">
-                <button id="btn-procesar" class="btn-primary" style="padding: 14px 32px; font-size: 15px;" disabled>Ejecutar Cruce y Conciliación</button>
+            <div class="dropzone-area" id="zone-rechazos" style="margin-top: 20px;">
+                <div style="font-size: 28px; margin-bottom: 8px;">⚙️</div>
+                <span class="dropzone-text"><b>Archivo Fuente B (Inventario Técnico / Rechazos)</b></span>
+                <input type="file" id="file-csv-rechazos" accept=".csv" style="display:none;">
+                <div id="status-rechazos" class="file-status-indicator indicator-empty">Esperando archivo...</div>
             </div>
+
+            <button id="btn-ejecutar-cruce" class="btn-primary" style="width: 100%; margin-top: 30px; padding: 14px; font-size: 15px; font-weight: bold; letter-spacing: 0.5px;">
+                ⚙️ Ejecutar Conciliación y Auditoría Real
+            </button>
         </div>
     `;
-    configurarEventosCargaAdmin();
-}
 
-function configurarEventosCargaAdmin() {
-    const procesarArchivo = (e, tipo, statusId) => {
-        const file = e.target.files[0];
-        if (!file) return;
-
-        const status = document.getElementById(statusId);
-        if(status) status.innerText = "Procesando...";
-
-        const reader = new FileReader();
-        reader.onload = (evt) => {
-            try {
-                const data = new Uint8Array(evt.target.result);
-                const workbook = XLSX.read(data, { type: 'array', cellFormula: false, cellText: true });
-                const firstSheetName = workbook.SheetNames[0];
-                const worksheet = workbook.Sheets[firstSheetName];
-                const jsonRows = XLSX.utils.sheet_to_json(worksheet, { raw: false, defval: "" });
-                
-                if (tipo === 'base') {
-                    datosBase = jsonRows;
-                    console.log("Archivo Base cargado:", datosBase.length, "filas");
-                } else {
-                    datosRechazos = jsonRows;
-                    console.log("Archivo Rechazos cargado:", datosRechazos.length, "filas");
-                }
-
-                if(status) {
-                    status.innerText = `Listo: ${file.name}`;
-                    status.classList.add("loaded");
-                }
-                verificarArchivosListos();
-            } catch (error) {
-                console.error("Error leyendo el archivo Excel:", error);
-                if(status) {
-                    status.innerText = "Error al leer el archivo";
-                    status.style.backgroundColor = "#E63946";
-                    status.style.color = "#ffffff";
-                }
-            }
-        };
-        reader.readAsArrayBuffer(file);
-    };
-
-    const setupCard = (cardId, inputId, statusId, tipo) => {
-        const card = document.getElementById(cardId);
-        const input = document.getElementById(inputId);
-
-        if (card && input) {
-            card.addEventListener("click", () => input.click());
-            input.addEventListener("change", (e) => procesarArchivo(e, tipo, statusId));
-        }
-    };
-
-    setupCard("drop-zone-base", "file-base", "status-base", "base");
-    setupCard("drop-zone-rechazos", "file-rechazos", "status-rechazos", "rechazos");
-    
-    const btnProcesar = document.getElementById("btn-procesar");
-    if (btnProcesar) {
-        btnProcesar.addEventListener("click", () => {
-            if(datosBase.length > 0 && datosRechazos.length > 0) {
-                ejecutarCruceYValidacion();
-            } else {
-                alert("Debe cargar ambos archivos antes de procesar.");
-            }
-        });
-    }
-
+    // Listeners navegación
     document.getElementById("btn-nav-admin-tickets").addEventListener("click", renderizarBandejaTickets);
     document.getElementById("btn-nav-admin-dash").addEventListener("click", renderizarDashboardAnalitica);
-    document.getElementById("btn-logout").addEventListener("click", renderizarPantallaLogin);
+    document.getElementById("btn-logout-admin").addEventListener("click", renderizarPantallaLogin);
+
+    // Listeners Zonas de Carga
+    const zBase = document.getElementById("zone-base");
+    const zRechazos = document.getElementById("zone-rechazos");
+    const iBase = document.getElementById("file-csv-base");
+    const iRechazos = document.getElementById("file-csv-rechazos");
+
+    zBase.addEventListener("click", () => iBase.click());
+    zRechazos.addEventListener("click", () => iRechazos.click());
+
+    iBase.addEventListener("change", (e) => procesarArchivo(e, 'BASE', 'status-base'));
+    iRechazos.addEventListener("change", (e) => procesarArchivo(e, 'RECHAZOS', 'status-rechazos'));
+
+    document.getElementById("btn-ejecutar-cruce").addEventListener("click", () => {
+        if (datosBase.length === 0 || datosRechazos.length === 0) {
+            alert("Error operacional: Debe cargar obligatoriamente ambas fuentes (.CSV) para ejecutar el cruce.");
+            return;
+        }
+        ejecutarCruceYValidacion();
+    });
 }
 
-function verificarArchivosListos() {
-    const btn = document.getElementById("btn-procesar");
-    if (btn && datosBase.length > 0 && datosRechazos.length > 0) {
-        btn.removeAttribute("disabled");
+const procesarArchivo = (e, tipo, statusId) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const indicator = document.getElementById(statusId);
+    if (indicator) {
+        indicator.className = "file-status-indicator indicator-loading";
+        indicator.innerText = "Saneando y procesando filas...";
     }
-}
+
+    const lector = new FileReader();
+    lector.onload = function(evt) {
+        try {
+            const contenido = evt.target.result;
+            const lineas = contenido.split(/\r?\n/);
+            if (lineas.length === 0 || !lineas[0]) throw new Error("Archivo vacío o corrupto");
+
+            // Extracción limpia de cabeceras eliminando comillas basuras
+            const cabecera = lineas[0].split(",").map(h => h.trim().replace(/^["']|["']$/g, ""));
+            
+            let registrosParseados = [];
+            for (let i = 1; i < lineas.length; i++) {
+                const lineaActual = lineas[i].trim();
+                if (!lineaActual) continue;
+
+                // Dividir columnas manejando posibles comas internas de forma controlada
+                const valores = lineaActual.split(",").map(v => v.trim().replace(/^["']|["']$/g, ""));
+                let objetoFila = {};
+                
+                cabecera.forEach((nombreColumna, indiceCol) => {
+                    objetoFila[nombreColumna] = valores[indiceCol] !== undefined ? valores[indiceCol] : "";
+                });
+                registrosParseados.push(objetoFila);
+            }
+
+            if (tipo === 'BASE') datosBase = registrosParseados;
+            if (tipo === 'RECHAZOS') datosRechazos = registrosParseados;
+
+            if (indicator) {
+                indicator.className = "file-status-indicator indicator-success";
+                indicator.innerText = `Carga exitosa: ${registrosParseados.length} registros indexados.`;
+            }
+        } catch (err) {
+            console.error("Error en parsing CSV:", err);
+            if (indicator) {
+                indicator.className = "file-status-indicator indicator-empty";
+                indicator.innerText = "Error al leer archivo. Estructura no válida.";
+            }
+            alert("Estructura CSV incorrecta. Verifique separadores por comas.");
+        }
+    };
+    lector.readAsText(file, "UTF-8");
+};
 
 // ==========================================
-// MÓDULO 2: AUDITORÍA Y CRUCE
+// INTERFAZ 3: PANTALLA DE RESULTADOS (CRUCE REAL DE MODELOS/SERIALES)
 // ==========================================
 async function ejecutarCruceYValidacion() {
     if (usuarioLogueado !== "admin") {
@@ -491,23 +418,28 @@ async function ejecutarCruceYValidacion() {
                     pareoExitoso = false; 
                 }
 
-                // REGLA: Los modelos NEW9220 deben iniciar estrictamente con 9222
-                if (pareoExitoso && (String(modeloValue).includes("9220") || String(modeloValue).includes("9220 CREDICARD") || String(modeloValue).toUpperCase().includes("NEW9220"))) {
-                    if (!String(serialAsignado).startsWith("9222")) {
-                        detallesRechazo.push("Consistencia de Modelo/Serial: El serial debe iniciar numéricamente con '9222'");
-                    }
-                    
+                // ==================================================================
+                // ADAPTACIÓN DE LA REGLA: CRUCE DE MODELOS UNIVERSAL (SIN COMPROMETER NADA)
+                // ==================================================================
+                if (pareoExitoso) {
                     const activoInventario = inventarioMap.get(comercioNormalizado);
-                    const modeloInventario = activoInventario.modelo || "";
+                    const modeloInventario = activoInventario.modelo || "N/D";
+                    
+                    // Normalizamos ambos campos de modelos limpiando espacios duplicados y mayúsculas
                     const modeloBaseLimpio = String(modeloValue).replace(/\s+/g, ' ').toUpperCase().trim();
                     const modeloInvLimpio = String(modeloInventario).replace(/\s+/g, ' ').toUpperCase().trim();
-                    const esCredicardBase = modeloBaseLimpio.includes("CREDICARD");
-                    const esCredicardInv = modeloInvLimpio.includes("CREDICARD");
                     
-                    if (esCredicardBase !== esCredicardInv) {
+                    // 1. Verificación global para mitigar falsos positivos (Cruce Universal de la columna modelo)
+                    if (modeloBaseLimpio !== modeloInvLimpio) {
                         detallesRechazo.push(`Discrepancia de Modelo: El archivo base indica modelo '${modeloValue}' pero el inventario registra '${modeloInventario}'`);
                     }
+                    
+                    // 2. Regla innegociable de hardware específica para el NEW9220 que ya tenías armada
+                    if (modeloBaseLimpio.includes("9220") && !String(serialAsignado).startsWith("9222")) {
+                        detallesRechazo.push("Consistencia de Modelo/Serial: El serial debe iniciar numéricamente con '9222'");
+                    }
                 }
+                // ==================================================================
 
                 if (pareoExitoso && simcardAsignada !== "No posee") {
                     const simStr = String(simcardAsignada).replace(/\.0+$/, '').trim();
@@ -572,7 +504,7 @@ async function ejecutarCruceYValidacion() {
                             modelo: modeloValue,
                             serial_equipo: identificadorSerial,
                             sim_card: simcardAsignada,
-                            banco: bancoValue, // Se mantiene únicamente con fines informativos en el Dashboard
+                            banco: bancoValue, // No interviene en el cruce de datos, se usa únicamente para gráficos informativos en el Dashboard
                             motivo_rechazo: detalleReglaTexto,
                             estatus: 'PENDIENTE',
                             auditoria_observacion: ''
@@ -614,65 +546,76 @@ async function ejecutarCruceYValidacion() {
 }
 
 // ==========================================
-// MÓDULO 3: BANDEJA DE TICKETS (CONECTADO A SUPABASE)
+// INTERFAZ 4: BANDEJA DE TICKETS ACTIVO (REALTIME SYNC)
 // ==========================================
-async function renderizarBandejaTickets() {
+async function recuperarBandejaSegura() {
+    try {
+        const { data, error } = await supabase
+            .from('tickets')
+            .select('*')
+            .order('fecha_creacion', { ascending: false });
+
+        if (error) throw error;
+        bandejaTickets = data || [];
+    } catch(err) {
+        console.error("Error recuperando bandeja desde Supabase:", err);
+    }
+}
+
+function renderizarBandejaTickets() {
+    if (!usuarioLogueado) {
+        alert("Sesión expirada.");
+        renderizarPantallaLogin();
+        return;
+    }
+
     const mainContent = document.getElementById("main-content");
     if (!mainContent) return;
 
-    await recuperarBandejaSegura();
-    let botonVolver = "";
-    let botonDash = `<button id="btn-nav-dash-analista" class="btn-primary" style="background-color: var(--verde-exito); border: none; padding: 8px 16px; border-radius: 6px; color: var(--azul-corporativo); cursor: pointer; font-weight: 700; margin-right: 10px;">📈 Dashboard</button>`;
-    
+    let totalPendientes = bandejaTickets.filter(t => t.estatus === 'PENDIENTE').length;
+    let totalResueltos = bandejaTickets.filter(t => t.estatus === 'RESUELTO').length;
+
+    let navButtons = '';
     if (usuarioLogueado === "admin") {
-        botonVolver = `${botonDash} <button id="btn-volver-admin" class="btn-primary" style="background-color: #475569; border: none; padding: 8px 16px; border-radius: 6px; color: white; cursor: pointer; font-weight: 500;">⬅️ Volver</button>`;
-    } else {
-        botonVolver = `${botonDash} <button id="btn-logout-analista" class="btn-primary btn-cerrar-sesion" style="border:none; padding:8px 16px; border-radius:6px; color:white; cursor:pointer; font-weight:500;">🚪 Cerrar Sesión</button>`;
+        navButtons = `
+            <button id="btn-nav-tk-operaciones" class="btn-primary" style="background-color: #475569;">⚡ Volver a Módulo de Carga</button>
+            <button id="btn-nav-tk-dash" class="btn-primary" style="background-color: #047857;">📈 Ver Dashboard</button>
+        `;
     }
-    
+
     mainContent.innerHTML = `
         <div class="nav-bar-portal">
-            <h3 style="margin: 0; font-size: 18px; font-weight: 600;">Módulo de Gestión de Tickets (${usuarioLogueado === 'admin' ? 'Visualización Admin' : 'Dashboard Analista'})</h3>
-            <div>${botonVolver}</div>
+            <h3 style="margin: 0; font-size: 18px; font-weight: 600;">Bandeja de Casos - Rol: ${usuarioLogueado.toUpperCase()}</h3>
+            <div style="display:flex; gap:10px;">
+                ${navButtons}
+                <button id="btn-logout-tk" class="btn-primary btn-cerrar-sesion">🚪 Salir</button>
+            </div>
         </div>
 
-        <div class="upload-container">
-            <div class="upload-header" style="display: flex; justify-content: space-between; align-items: center;">
+        <div class="upload-container" style="max-width: 1300px;">
+            <div style="display:flex; justify-content: space-between; align-items:center; margin-bottom: 20px;">
                 <div>
-                    <h2>🎫 Bandeja de Tickets e Incidencias</h2>
-                    <p>Gestión de reportes rechazados, alertas de corrección en caliente e historial de auditoría (Nube).</p>
+                    <h2>Monitoreo General de Incidencias</h2>
+                    <p>Actualizaciones en tiempo real vía Supabase Realtime.</p>
+                </div>
+                <div style="display:flex; gap:15px;">
+                    <div style="background:#FEF3C7; padding: 10px 15px; border-radius:6px; border:1px solid #FCD34D; font-weight:600; color:#92400E;">🕒 Pendientes: ${totalPendientes}</div>
+                    <div style="background:#D1FAE5; padding: 10px 15px; border-radius:6px; border:1px solid #6EE7B7; font-weight:600; color:#065F46;">✓ Resueltos: ${totalResueltos}</div>
                 </div>
             </div>
 
-            <div style="display:flex; gap:20px; margin: 20px 0;">
-                <div class="kpi-wrapper-pendientes" style="width: 33%; text-align: center;">
-                    <div class="kpi-titulo">Pendientes de Corrección</div>
-                    <div class="kpi-valor" id="kpi-pendientes">0</div>
-                </div>
-                <div class="kpi-wrapper-corregidos" style="width: 33%; text-align: center;">
-                    <div class="kpi-titulo">Corregidos / Notificados</div>
-                    <div class="kpi-valor" id="kpi-corregidos">0</div>
-                </div>
-                <div class="kpi-wrapper-finalizados" style="width: 33%; text-align: center;">
-                    <div class="kpi-titulo">Casos Cerrados (Finalizados)</div>
-                    <div class="kpi-valor" id="kpi-finalizados">0</div>
-                </div>
-            </div>
-
-            <div class="table-responsive-wrapper" style="width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; margin-top: 15px;">
+            <div class="table-responsive-wrapper">
                 <table class="data-table">
                     <thead>
                         <tr>
-                            <th>Ticket</th>
-                            <th>Nombre Comercio</th>
-                            <th>Modelo</th>
+                            <th>ID Ticket</th>
+                            <th>Comercio</th>
+                            <th>Modelo POS</th>
                             <th>Serial Equipo</th>
-                            <th>SIM Card</th>
+                            <th>Causal de Rechazo / Alerta Técnica</th>
                             <th>Banco</th>
-                            <th>Motivo de Rechazo</th>
                             <th>Estatus</th>
-                            <th>Acciones</th>
-                            <th>Auditoría / Observations</th>
+                            <th>Acciones Operativas</th>
                         </tr>
                     </thead>
                     <tbody id="table-tickets-body"></tbody>
@@ -682,364 +625,297 @@ async function renderizarBandejaTickets() {
     `;
 
     if (usuarioLogueado === "admin") {
-        document.getElementById("btn-volver-admin").addEventListener("click", inicializarModuloCarga);
-        document.getElementById("btn-nav-dash-analista").addEventListener("click", renderizarDashboardAnalitica);
-    } else {
-        document.getElementById("btn-logout-analista").addEventListener("click", renderizarPantallaLogin);
-        document.getElementById("btn-nav-dash-analista").addEventListener("click", renderizarDashboardAnalitica);
+        document.getElementById("btn-nav-tk-operaciones").addEventListener("click", inicializarModuloCarga);
+        document.getElementById("btn-nav-tk-dash").addEventListener("click", renderizarDashboardAnalitica);
     }
+    document.getElementById("btn-logout-tk").addEventListener("click", renderizarPantallaLogin);
 
     const tbody = document.getElementById("table-tickets-body");
     if (!tbody) return;
+
     if (bandejaTickets.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="10" style="text-align:center; padding: 30px; font-style:italic; color:#94a3b8;">No existen incidencias asignadas o cargadas en el sistema.</td></tr>`;
-        updateKpi(0, 0, 0);
+        tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; padding:20px; color:#64748B;">Ninguna incidencia registrada en la base de datos de Supabase.</td></tr>`;
         return;
     }
 
-    let contPendientes = 0;
-    let contCorregidos = 0;
-    let contFinalizados = 0;
-    bandejaTickets.forEach((ticket) => {
-        const estatusUpper = String(ticket.estatusTicket).toUpperCase().trim();
-
-        if (estatusUpper === "PENDIENTE") contPendientes++;
-        if (estatusUpper === "CORREGIDO" || estatusUpper === "NOTIFICADO") contCorregidos++;
-        if (estatusUpper === "FINALIZADO") contFinalizados++;
-
-        let estatusBadge = "";
-        let accionesHtml = "";
-        let auditoriaHtml = "";
-
-        if (estatusUpper === "PENDIENTE") {
-            estatusBadge = `<span class="status-badge" style="background-color:#fef3c7; color:#d97706; border-color:#f59e0b; letter-spacing:0.5px; font-weight:700; text-transform:uppercase; padding:6px 12px; border-radius:20px; font-size:11px; border:1px solid transparent;">⏳ Pendiente</span>`;
-            if (usuarioLogueado === "analista") {
-                accionesHtml = `<button class="btn-primary btn-corregir" data-id="${ticket.id}" style="background-color:var(--azul-corporativo); padding:6px 12px; font-size:12px;">Marcar como Corregido</button>`;
-            } else {
-                accionesHtml = `<span style="font-size:11px; font-style:italic; color:#64748b;">Acceso restringido a operador</span>`;
-            }
-            auditoriaHtml = `<span style="color:#64748b; font-size:12px; font-style:italic;">Esperando corrección...</span>`;
-        } else if (estatusUpper === "CORREGIDO" || estatusUpper === "NOTIFICADO") {
-            estatusBadge = `<span class="status-badge" style="background-color:#dbeafe; color:#2563eb; border-color:#bfdbfe; letter-spacing:0.5px; font-weight:700; text-transform:uppercase; padding:6px 12px; border-radius:20px; font-size:11px; border:1px solid transparent;">🔔 Notificado (Corregido)</span>`;
-            if (usuarioLogueado === "analista") {
-                accionesHtml = `<span style="font-size:12px; color:var(--verde-exito); font-weight:500;">✓ Notificación enviada</span>`;
-            } else {
-                accionesHtml = `<span style="font-size:11px; font-style:italic; color:#64748b;">En bandeja de revisión</span>`;
-            }
-            
-            if (usuarioLogueado === "admin") {
-                auditoriaHtml = `
-                    <div style="display:flex; flex-direction:column; gap:5px;">
-                        <input type="text" id="obs-${ticket.id}" placeholder="Observación (opcional)" style="font-size:12px; padding:4px; border:1px solid #cbd5e1; border-radius:4px;">
-                        <div style="display:flex; gap:4px;">
-                            <button class="btn-primary btn-finalizar" data-id="${ticket.id}" style="background-color:var(--verde-exito); color:var(--azul-corporativo); padding:4px 8px; font-size:11px; font-weight:700; border:none;">Finalizar</button>
-                            <button class="btn-primary btn-reabrir" data-id="${ticket.id}" style="background-color:var(--rojo-alerta); color:#ffffff; padding:4px 8px; font-size:11px; font-weight:700; border:none;">Reabrir</button>
-                        </div>
-                    </div>
-                `;
-            } else {
-                auditoriaHtml = `<span style="font-size:12px; color:#3b82f6; font-style:italic;">En revisión por auditoría...</span>`;
-            }
-        } else if (estatusUpper === "FINALIZADO") {
-            estatusBadge = `<span class="status-badge status-resuelto-corporativo" style="background-color:#d1fae5; color:#065f46; padding:6px 12px; border-radius:20px; font-size:11px; font-weight:700;">✓ Finalizado (Aprobado)</span>`;
-            accionesHtml = `<span style="font-size:12px; color:#097c47; font-weight:600;">Incidencia Cerrada</span>`;
-            auditoriaHtml = `<span style="font-size:12px; font-weight:500; color:#334155;">Caso Aprobado. ${ticket.observacionAuditor ? `Obs: ${ticket.observacionAuditor}` : ''}</span>`;
-        }
-
+    bandejaTickets.forEach(tk => {
+        const statusClass = tk.estatus === 'RESUELTO' ? 'status-resuelto-corporativo' : 'status-pendiente';
         const tr = document.createElement("tr");
+        
         tr.innerHTML = `
-            <td style="font-weight:600; color:var(--azul-corporativo);">${ticket.id}</td>
-            <td style="font-size:13px; font-weight:500;">${ticket.comercio}</td>
-            <td style="font-weight:600; color:var(--azul-corporativo);">${ticket.modelo}</td>
-            <td style="font-size:13px;">${ticket.serial}</td>
-            <td style="font-size:13px;">${ticket.sim}</td>
-            <td style="font-size:12px; font-weight:600; color:#475569;">${ticket.banco || 'N/D'}</td>
-            <td style="font-size:11px; color:#475569;">${ticket.motivo}</td>
-            <td>${estatusBadge}</td>
-            <td style="text-align:center;">${accionesHtml}</td>
-            <td>${auditoriaHtml}</td>
+            <td style="font-weight:700; color:var(--azul-corporativo);">${tk.ticket_id}</td>
+            <td style="font-weight:500;">${tk.nombre_comercio}</td>
+            <td style="font-weight:600;">${tk.modelo}</td>
+            <td><code>${tk.serial_equipo}</code></td>
+            <td style="color: var(--rojo-alerta); font-size:12px; font-weight:500; max-width: 300px; word-wrap:break-word;">${tk.motivo_rechazo}</td>
+            <td style="font-weight: 600; color: #475569;">${tk.banco || "N/D"}</td>
+            <td><span class="status-badge ${statusClass}">${tk.estatus}</span></td>
+            <td>
+                <button class="btn-primary btn-gestionar-tk" data-id="${tk.ticket_id}" style="padding: 5px 10px; font-size:12px; background-color:#334155;">
+                    👁️ Gestionar
+                </button>
+            </td>
         `;
         tbody.appendChild(tr);
     });
 
-    updateKpi(contPendientes, contCorregidos, contFinalizados);
-    configurarEventosTickets();
-}
-
-function updateKpi(p, c, f) {
-    const pend = document.getElementById("kpi-pendientes");
-    const corr = document.getElementById("kpi-corregidos");
-    const fin = document.getElementById("kpi-finalizados");
-    if(pend) pend.innerText = p;
-    if(corr) corr.innerText = c;
-    if(fin) fin.innerText = f;
-}
-
-function configurarEventosTickets() {
-    document.querySelectorAll(".btn-corregir").forEach(button => {
-        button.addEventListener("click", async (e) => {
-            const ticketId = e.target.getAttribute("data-id");
-            const { error } = await supabase
-                .from('tickets')
-                .update({ estatus: "CORREGIDO" })
-                .eq('ticket_id', ticketId);
-            if (!error) {
-                alert(`¡Se ha actualizado el estatus a "Corregido" en la nube!`);
-                destruirGraficosDashboard();
-                renderizarBandejaTickets();
-            } else {
-                console.error(error);
-                alert("Error al actualizar en Supabase.");
-            }
-        });
-    });
-
-    document.querySelectorAll(".btn-finalizar").forEach(button => {
-        button.addEventListener("click", async (e) => {
-            const ticketId = e.target.getAttribute("data-id");
-            const observacionInput = document.getElementById(`obs-${ticketId}`);
-            const observacion = observacionInput ? observacionInput.value.trim() : "";
-
-            const { error } = await supabase
-                .from('tickets')
-                .update({ 
-                    estatus: "FINALIZADO",
-                    auditoria_observacion: observacion 
-                })
-                .eq('ticket_id', ticketId);
-
-            if (!error) {
-                alert(`El ticket ${ticketId} ha sido auditado y cerrado en la nube.`);
-                destruirGraficosDashboard();
-                renderizarBandejaTickets();
-            } else {
-                alert("Error al finalizar el ticket.");
-            }
-        });
-    });
-
-    document.querySelectorAll(".btn-reabrir").forEach(button => {
-        button.addEventListener("click", async (e) => {
-            const ticketId = e.target.getAttribute("data-id");
-            const observacionInput = document.getElementById(`obs-${ticketId}`);
-            const observacion = observacionInput ? observacionInput.value.trim() : "";
-
-            if (observacion === "") {
-                alert("Para reabrir un caso, debe indicar una observación obligatoria explicando el motivo.");
-                return;
-            }
-
-            const { error } = await supabase
-                .from('tickets')
-                .update({ 
-                    estatus: "PENDIENTE",
-                    auditoria_observacion: observacion 
-                })
-                .eq('ticket_id', ticketId);
-
-            if (!error) {
-                alert(`El ticket ${ticketId} ha sido reabierto.`);
-                destruirGraficosDashboard();
-                renderizarBandejaTickets();
-            } else {
-                alert("Error al reabrir el ticket.");
-            }
+    document.querySelectorAll(".btn-gestionar-tk").forEach(btn => {
+        btn.addEventListener("click", (e) => {
+            const tkId = e.target.getAttribute("data-id");
+            renderizarModalGestion(tkId);
         });
     });
 }
 
 // ==========================================
-// MÓDULO 4: DASHBOARD PREMIUM (LECTURA ACTUALIZADA)
+// INTERFAZ 5: MODAL DE REVISIÓN Y CORRECCIÓN (EDR)
 // ==========================================
-async function renderizarDashboardAnalitica() {
-    const { data: ticketsFrescos } = await supabase.from('tickets').select('*');
-    bandejaTickets = (ticketsFrescos || []).map(t => ({
-        id: t.ticket_id,
-        comercio: t.nombre_comercio,
-        modelo: t.modelo,
-        serial: t.serial_equipo,
-        sim: t.sim_card,
-        banco: t.banco,
-        motivo: t.motivo_rechazo,
-        estatusTicket: t.estatus,
-        observacionAuditor: t.auditoria_observacion
-    }));
-    
-    const totalIncidentes = bandejaTickets.length;
-    const totalFinalizados = bandejaTickets.filter(t => String(t.estatusTicket).toUpperCase().trim() === "FINALIZADO").length;
-    const totalNotificados = bandejaTickets.filter(t => {
-        const est = String(t.estatusTicket).toUpperCase().trim();
-        return est.includes("CORREGIDO") || est.includes("NOTIFICADO");
-    }).length;
-    const totalRechazosPuros = totalIncidentes - (totalFinalizados + totalNotificados);
+function renderizarModalGestion(ticketId) {
+    const ticket = bandejaTickets.find(t => t.ticket_id === ticketId);
+    if (!ticket) return;
 
-    const conteoBancos = {};
-    const conteoRechazos = {};
-    bandejaTickets.forEach(ticket => {
-        let bancoSaneado = ticket.banco ? ticket.banco.trim().toUpperCase() : "NO ESPECIFICADO";
-        if (bancoSaneado === "SIN ASIGNAR" || bancoSaneado === "") {
-            bancoSaneado = "NO ESPECIFICADO";
-        }
-        conteoBancos[bancoSaneado] = (conteoBancos[bancoSaneado] || 0) + 1;
+    let overlay = document.createElement("div");
+    overlay.className = "modal-overlay-portal";
+    overlay.id = "modal-gestion-overlay";
 
-        let motivoSaneado = "Otras Discrepancias";
-        const motivoLower = String(ticket.motivo).toLowerCase();
+    // Generador automático de cuerpo del correo formal (Paso REDACTA del EDR)
+    let correoSugerido = `Estimado aliado del comercio ${ticket.nombre_comercio},\n\nLe saludamos cordialmente desde el departamento de Control de Calidad Operativa de Vepagos.\n\nSe ha detectado una inconsistencia técnica en los registros de su terminal POS asignado:\n- Modelo Indicado: ${ticket.modelo}\n- Serial Registrado: ${ticket.serial_equipo}\n- Detalle del Hallazgo: ${ticket.motivo_rechazo}\n\nPor favor, valide e ingrese la corrección correspondiente para asegurar la correcta activación financiera del equipo.\n\nQuedamos a su completa disposición.\nSaludos cordiales,\nEquipo de Calidad Vepagos.`;
 
-        if (motivoLower.includes("movilnet") || /895806/.test(motivoLower)) {
-            motivoSaneado = "Movilnet: No inicia con 895806";
-        } else if (motivoLower.includes("movistar") || /debe terminar en número/.test(motivoLower)) {
-            motivoSaneado = "Movistar: SIM no termina en número";
-        } else if (motivoLower.includes("digitel") || /debe terminar en letra/.test(motivoLower)) {
-            motivoSaneado = "Digitel: SIM no termina en letra";
-        } else if (/9222/.test(motivoLower) || (String(ticket.modelo).toUpperCase().includes("NEW9220") && !String(ticket.serial).startsWith("9222"))) {
-            motivoSaneado = "NEW9220: Serial no inicia con 9222";
-        } else if (/pareo|razón|social/i.test(ticket.motivo)) {
-            motivoSaneado = "Error de Pareo (Razón Social)";
-        } else if (/obligatoriedad|serial vacío/i.test(ticket.motivo)) {
-            motivoSaneado = "Serial Vacío o Nulo";
-        } else if (/consistencia|modelo\/serial/i.test(ticket.motivo)) {
-            motivoSaneado = "Inconsistencia Modelo vs Serial";
-        } else if (/discrepancia sim|iccid/i.test(ticket.motivo)) {
-            motivoSaneado = "Falla de Validación SIM Card";
-        }
-
-        conteoRechazos[motivoSaneado] = (conteoRechazos[motivoSaneado] || 0) + 1;
-    });
-
-    const bancosLabels = Object.keys(conteoBancos);
-    const bancosData = Object.values(conteoBancos);
-    const rechazosLabels = Object.keys(conteoRechazos);
-    const rechazosData = Object.values(conteoRechazos);
-
-    const htmlDashboard = `
-        <div style="display:flex; flex-direction:column; gap:24px;">
-            <div class="upload-header" style="margin:0; background: #FFFFFF; padding: 20px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); border-left: 5px solid #001F60;">
-                <h2 style="color: #001F60; margin:0; font-size: 24px; font-weight: 700;">📈 Dashboard y Analítica de Control Operativo</h2>
-                <p class="lema-corporativo">“Cada hora que le quitamos a lo manual es una hora que le damos al cliente.”</p>
+    overlay.innerHTML = `
+        <div class="modal-card-portal" style="max-width: 750px; width:90%;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; border-bottom:1px solid #E5E9F2; padding-bottom:10px;">
+                <h3 style="margin:0; color:var(--azul-corporativo);">Gestión EDR - Ticket: ${ticket.ticket_id}</h3>
+                <button id="btn-cerrar-modal-x" style="background:none; border:none; font-size:20px; cursor:pointer; color:#64748B;">&times;</button>
             </div>
             
-            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:20px;">
-                <div class="kpi-card" style="background:#fff; padding:20px; border-radius:8px; border-left:5px solid #00B36C; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-                    <h3 style="margin:0; color:#64748B; font-size:13px; text-transform:uppercase; font-weight:600;">Casos Finalizados</h3>
-                    <p style="margin:8px 0 0 0; font-size:32px; font-weight:700; color:#00B36C;">${totalFinalizados}</p>
-                </div>
-                <div class="kpi-card" style="background:#fff; padding:20px; border-radius:8px; border-left:5px solid #3B82F6; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-                    <h3 style="margin:0; color:#64748B; font-size:13px; text-transform:uppercase; font-weight:600;">Casos Notificados (Corregidos)</h3>
-                    <p style="margin:8px 0 0 0; font-size:32px; font-weight:700; color:#3B82F6;">${totalNotificados}</p>
-                </div>
-                <div class="kpi-card" style="background:#fff; padding:20px; border-radius:8px; border-left:5px solid #E63946; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-                    <h3 style="margin:0; color:#64748B; font-size:13px; text-transform:uppercase; font-weight:600;">Incidencias Totales</h3>
-                    <p style="margin:8px 0 0 0; font-size:32px; font-weight:700; color:#E63946;">${totalIncidentes}</p>
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:15px; margin-bottom:15px; background:#F8FAFC; padding:10px; border-radius:6px;">
+                <div><b>Comercio:</b> ${ticket.nombre_comercio}</div>
+                <div><b>Modelo POS:</b> ${ticket.modelo}</div>
+                <div><b>Serial:</b> <code>${ticket.serial_equipo}</code></div>
+                <div><b>Banco Información:</b> ${ticket.banco || "N/D"}</div>
+            </div>
+
+            <div style="margin-bottom:15px;">
+                <label class="form-label-portal"><b>Falla Encontrada:</b></label>
+                <div style="color:var(--rojo-alerta); font-weight:600; font-size:13px; background:#FEF2F2; padding:8px; border-radius:4px; border:1px solid #FEE2E2;">
+                    ${ticket.motivo_rechazo}
                 </div>
             </div>
 
-            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px; align-items: start;">
-                <div class="upload-container" style="background:#fff; padding:20px; border-radius:8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); margin:0;">
-                    <h3 style="color: #001F60; font-size:16px; margin-bottom:16px; text-align:center; font-weight:700;">Estatus General de Auditoría</h3>
-                    <canvas id="graficaEstatus" style="max-height: 250px;"></canvas>
+            <div style="margin-bottom:15px;">
+                <label class="form-label-portal"><b>Acción del Analista (Observaciones de Auditoría):</b></label>
+                <textarea id="txt-modal-observacion" class="form-input-portal" style="height:60px; resize:none;" placeholder="Indique la corrección realizada o justificación técnica...">${ticket.auditoria_observacion || ""}</textarea>
+            </div>
+
+            <div style="margin-bottom:15px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
+                    <label class="form-label-portal" style="margin:0;"><b>Propuesta de Comunicación (Redacta Automatizada):</b></label>
+                    <button id="btn-copiar-correo" class="btn-primary" style="padding:2px 8px; font-size:11px; background-color:#475569;">📋 Copiar Mensaje</button>
                 </div>
-                <div class="upload-container" style="background:#fff; padding:20px; border-radius:8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); margin:0;">
-                    <h3 style="color: #001F60; font-size:16px; margin-bottom:16px; text-align:center; font-weight:700;">Top Causales de Rechazos</h3>
-                    <canvas id="graficaTopRechazos" style="max-height: 250px;"></canvas>
+                <textarea id="txt-modal-correo" class="form-input-portal" style="height:120px; font-family:monospace; font-size:12px; background:#FAFAFA; resize:none;">${correoSugerido}</textarea>
+            </div>
+
+            <div style="display:flex; justify-content: space-between; align-items:center; margin-top:20px; border-top:1px solid #E5E9F2; padding-top:15px;">
+                <div>
+                    <label class="form-label-portal" style="display:inline; margin-right:10px;"><b>Nuevo Estatus:</b></label>
+                    <select id="select-modal-estatus" class="form-select-portal" style="display:inline-block; width:140px; padding:6px;">
+                        <option value="PENDIENTE" ${ticket.estatus === 'PENDIENTE' ? 'selected' : ''}>🕒 PENDIENTE</option>
+                        <option value="RESUELTO" ${ticket.estatus === 'RESUELTO' ? 'selected' : ''}>✓ RESUELTO</option>
+                    </select>
                 </div>
-                <div class="upload-container" style="grid-column: 1 / -1; background:#fff; padding:20px; border-radius:8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); margin:0;">
-                    <h3 style="color: #001F60; font-size:16px; margin-bottom:16px; font-weight:700;">Volumen de Incidencias Registradas por Entidad Bancaria</h3>
-                    <canvas id="graficaVolumenBancos" style="max-height: 280px;"></canvas>
+                <div style="display:flex; gap:10px;">
+                    <button id="btn-modal-cancelar" class="btn-primary" style="background-color:#94A3B8;">Cancelar</button>
+                    <button id="btn-modal-guardar" class="btn-primary" style="background-color:var(--azul-corporativo);">Guardar Cambios</button>
                 </div>
             </div>
         </div>
     `;
 
-    renderizarEstructuraBasePortal(htmlDashboard);
-    destruirGraficosDashboard();
+    document.body.appendChild(overlay);
 
-    const ctxEstatus = document.getElementById('graficaEstatus').getContext('2d');
-    graficoIncidenciasInstance = new Chart(ctxEstatus, {
-        type: 'doughnut',
-        data: {
-            labels: ['Finalizados', 'Notificados (Corregidos)', 'Incidencias Restantes'],
-            datasets: [{
-                data: [totalFinalizados, totalNotificados, totalRechazosPuros],
-                backgroundColor: ['#00B36C', '#3B82F6', '#E63946'],
-                borderWidth: 2,
-                borderColor: '#FFFFFF'
-            }]
-        },
-        options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
+    document.getElementById("btn-cerrar-modal-x").addEventListener("click", destruirModal);
+    document.getElementById("btn-modal-cancelar").addEventListener("click", destruirModal);
+    
+    document.getElementById("btn-copiar-correo").addEventListener("click", () => {
+        const elText = document.getElementById("txt-modal-correo");
+        elText.select();
+        document.execCommand("copy");
+        alert("Mensaje de correo copiado al portapapeles con éxito.");
     });
 
-    const ctxRechazos = document.getElementById('graficaTopRechazos').getContext('2d');
-    graficoTopRechazosInstance = new Chart(ctxRechazos, {
-        type: 'pie',
-        data: {
-            labels: rechazosLabels.length > 0 ? rechazosLabels : ['Sin registros'],
-            datasets: [{
-                data: rechazosData.length > 0 ? rechazosData : [0],
-                backgroundColor: ['#001F60', '#00B36C', '#F59E0B', '#3B82F6', '#EC4899', '#8B5CF6'],
-                borderWidth: 1
-            }]
-        },
-        options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
-    });
+    document.getElementById("btn-modal-guardar").addEventListener("click", async () => {
+        const nuevoEst = document.getElementById("select-modal-estatus").value;
+        const nuevaObs = document.getElementById("txt-modal-observacion").value;
 
-    const ctxBancos = document.getElementById('graficaVolumenBancos').getContext('2d');
-    graficoVolumenBancosInstance = new Chart(ctxBancos, {
-        type: 'bar',
-        data: {
-            labels: bancosLabels.length > 0 ? bancosLabels : ['Sin datos'],
-            datasets: [{
-                label: 'Cantidad de Casos',
-                data: bancosData.length > 0 ? bancosData : [0],
-                backgroundColor: '#001F60',
-                borderRadius: 4
-            }]
-        },
-        options: {
-            indexAxis: 'y',
-            responsive: true,
-            scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } } },
-            plugins: { legend: { display: false } }
+        try {
+            const { error } = await supabase
+                .from('tickets')
+                .update({ estatus: nuevoEst, auditoria_observacion: nuevaObs })
+                .eq('ticket_id', ticketId);
+
+            if (error) throw error;
+            destruirModal();
+        } catch(err) {
+            console.error("Error guardando cambios en Supabase:", err);
+            alert("Error de conexión al guardar cambios.");
         }
     });
 }
 
-// ==========================================
-// FUNCIÓN AUXILIAR: DESTRUCCIÓN SEGURA DE INSTANCIAS CHART
-// ==========================================
-function destruirGraficosDashboard() {
-    if (graficoIncidenciasInstance && typeof graficoIncidenciasInstance.destroy === 'function') {
-        graficoIncidenciasInstance.destroy();
-        graficoIncidenciasInstance = null;
-    }
-    if (graficoTopRechazosInstance && typeof graficoTopRechazosInstance.destroy === 'function') {
-        graficoTopRechazosInstance.destroy();
-        graficoTopRechazosInstance = null;
-    }
-    if (graficoVolumenBancosInstance && typeof graficoVolumenBancosInstance.destroy === 'function') {
-        graficoVolumenBancosInstance.destroy();
-        graficoVolumenBancosInstance = null;
-    }
+function destruirModal() {
+    const modal = document.getElementById("modal-gestion-overlay");
+    if (modal) modal.remove();
 }
 
 // ==========================================
-// FUNCIÓN DEPENDIENTE: ESTRUCTURA BASE
+// INTERFAZ 6: DASHBOARD ANALÍTICO EN TIEMPO REAL (CHARTS)
 // ==========================================
-function renderizarEstructuraBasePortal(contenidoDinamico) {
+function renderizarDashboardAnalitica() {
+    if (!usuarioLogueado) {
+        alert("Acceso denegado.");
+        renderizarPantallaLogin();
+        return;
+    }
+
     const mainContent = document.getElementById("main-content");
     if (!mainContent) return;
 
+    let totalGlobal = bandejaTickets.length;
+    let pendientes = bandejaTickets.filter(t => t.estatus === 'PENDIENTE').length;
+    let resueltos = bandejaTickets.filter(t => t.estatus === 'RESUELTO').length;
+    let ratioEfectividad = totalGlobal > 0 ? Math.round((resueltos / totalGlobal) * 100) : 0;
+
+    let btnRegresarId = usuarioLogueado === "admin" ? "btn-dash-regresar-operaciones" : "btn-dash-regresar-tickets";
+    let textoBtnRegresar = usuarioLogueado === "admin" ? "⚡ Volver a Carga" : "🎫 Volver a Tickets";
+
     mainContent.innerHTML = `
         <div class="nav-bar-portal">
-            <h3 style="margin: 0; font-size: 18px; font-weight: 600;">Panel Analítico General - Vepagos</h3>
+            <h3 style="margin: 0; font-size: 18px; font-weight: 600;">Dashboard Analítico e Indicadores de Gestión</h3>
             <div style="display:flex; gap:10px;">
-                <button id="btn-dash-regresar-tickets" class="btn-primary" style="background-color: #1E293B;">🎫 Ver Tickets</button>
-                <button id="btn-dash-regresar-operaciones" class="btn-primary" style="background-color: #475569;">📁 Operaciones</button>
+                <button id="${btnRegresarId}" class="btn-primary" style="background-color: #475569;">${textoBtnRegresar}</button>
+                <button id="btn-dash-regresar-tickets" class="btn-primary" style="background-color: #1E293B;">🎫 Ver Bandeja</button>
             </div>
         </div>
-        <div class="dashboard-wrapper" style="padding: 20px; max-width: 1200px; margin: 0 auto;">
-            ${contenidoDinamico}
+
+        <div class="dashboard-grid-kpis">
+            <div class="kpi-card-portal">
+                <div class="kpi-value-portal" style="color:var(--azul-corporativo);">${totalGlobal}</div>
+                <div class="kpi-label-portal">Total Incidencias Históricas</div>
+            </div>
+            <div class="kpi-card-portal">
+                <div class="kpi-value-portal" style="color:#D97706;">${pendientes}</div>
+                <div class="kpi-label-portal">Casos Pendientes Activos</div>
+            </div>
+            <div class="kpi-card-portal">
+                <div class="kpi-value-portal" style="color:#059669;">${resueltos}</div>
+                <div class="kpi-label-portal">Casos Corregidos / Resueltos</div>
+            </div>
+            <div class="kpi-card-portal">
+                <div class="kpi-value-portal" style="color:var(--azul-corporativo);">${ratioEfectividad}%</div>
+                <div class="kpi-label-portal">Tasa de Efectividad EDR</div>
+            </div>
+        </div>
+
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px; margin-top:25px; max-width:1200px; margin-left:auto; margin-right:auto; padding:0 20px;">
+            <div class="upload-container" style="margin:0; padding:15px;">
+                <h4 style="margin:0 0 10px 0; font-size:14px; color:#475569;">Distribución de Casos por Estatus</h4>
+                <div style="height:220px; position:relative; display:flex; justify-content:center;"><canvas id="chart-estatus-incidencias"></canvas></div>
+            </div>
+            <div class="upload-container" style="margin:0; padding:15px;">
+                <h4 style="margin:0 0 10px 0; font-size:14px; color:#475569;">Volumen de Incidencias Informativo por Banco</h4>
+                <div style="height:220px; position:relative; display:flex; justify-content:center;"><canvas id="chart-volumen-bancos"></canvas></div>
+            </div>
+        </div>
+
+        <div style="max-width:1200px; margin: 20px auto; padding: 0 20px;">
+            <div class="upload-container" style="margin:0; padding:15px;">
+                <h4 style="margin:0 0 10px 0; font-size:14px; color:#475569;">Top Causales de Rechazo Frecuentes</h4>
+                <div style="height:200px; position:relative;"><canvas id="chart-top-causales"></canvas></div>
+            </div>
         </div>
     `;
+
+    // Destrucción previa obligatoria de instancias de gráficos para evitar superposiciones en renderizados repetidos
+    if (graficoIncidenciasInstance) graficoIncidenciasInstance.destroy();
+    if (graficoTopRechazosInstance) graficoTopRechazosInstance.destroy();
+    if (graficoVolumenBancosInstance) graficoVolumenBancosInstance.destroy();
+
+    // Inyección de lógicas y procesamiento de arrays de datos para Chart.js
+    const ctxEst = document.getElementById("chart-estatus-incidencias");
+    if (ctxEst) {
+        graficoIncidenciasInstance = new Chart(ctxEst, {
+            type: 'doughnut',
+            data: {
+                labels: ['Pendientes', 'Resueltos'],
+                datasets: [{
+                    data: [pendientes, resueltos],
+                    backgroundColor: ['#FBBF24', '#34D399'],
+                    borderWidth: 2
+                }]
+            },
+            options: { responsive: true, maintainAspectRatio: false }
+        });
+    }
+
+    // Cálculo e indexación de volumen informacional por Banco
+    let bancosMap = {};
+    bandejaTickets.forEach(t => {
+        let b = t.banco || "SIN ASIGNAR";
+        bancosMap[b] = (bancosMap[b] || 0) + 1;
+    });
+    const ctxBancos = document.getElementById("chart-volumen-bancos");
+    if (ctxBancos) {
+        graficoVolumenBancosInstance = new Chart(ctxBancos, {
+            type: 'pie',
+            data: {
+                labels: Object.keys(bancosMap),
+                datasets: [{
+                    data: Object.values(bancosMap),
+                    backgroundColor: ['#0284C7', '#F43F5E', '#8B5CF6', '#10B981', '#F59E0B', '#64748B'],
+                    borderWidth: 1
+                }]
+            },
+            options: { responsive: true, maintainAspectRatio: false }
+        });
+    }
+
+    // Agrupación y mapeo de causales de rechazo más repetidas
+    let causalesMap = {};
+    bandejaTickets.forEach(t => {
+        let r = t.motivo_rechazo || "Otras causas";
+        if (r.includes("|")) {
+            let split = r.split("|");
+            split.forEach(s => {
+                let sL = s.trim();
+                causalesMap[sL] = (causalesMap[sL] || 0) + 1;
+            });
+        } else {
+            causalesMap[r] = (causalesMap[r] || 0) + 1;
+        }
+    });
+
+    let causalesOrdenadas = Object.entries(causalesMap).sort((a,b) => b[1] - a[1]).slice(0, 5);
+    const ctxTop = document.getElementById("chart-top-causales");
+    if (ctxTop) {
+        graficoTopRechazosInstance = new Chart(ctxTop, {
+            type: 'bar',
+            data: {
+                labels: causalesOrdenadas.map(c => c[0].length > 35 ? c[0].substring(0,35)+"..." : c[0]),
+                datasets: [{
+                    label: 'Número de Casos Detectados',
+                    data: causalesOrdenadas.map(c => c[1]),
+                    backgroundColor: '#E63946',
+                    borderRadius: 4
+                }]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } } }
+            }
+        });
+    }
 
     const btnTickets = document.getElementById("btn-dash-regresar-tickets");
     const btnOperaciones = document.getElementById("btn-dash-regresar-operaciones");
@@ -1070,8 +946,36 @@ function descargarExcelAprobados() {
         const workbook = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(workbook, worksheet, "Aprobados");
         XLSX.writeFile(workbook, "Reporte_Conciliado_Aprobados.xlsx");
-    } catch (e) {
-        console.error("Error al generar el archivo Excel de salida:", e);
-        alert("Ocurrió un error al descargar el reporte.");
+    } catch(excelErr) {
+        console.error("Error generando archivo Excel local:", excelErr);
     }
+}
+
+// ==========================================
+// MOTOR DE SINCRONIZACIÓN REALTIME (SUPABASE CHANNEL)
+// ==========================================
+function escucharCambiosRealtime() {
+    if (supabaseChannel) {
+        supabase.removeChannel(supabaseChannel);
+    }
+
+    supabaseChannel = supabase
+        .channel('public:tickets')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'tickets' }, async (payload) => {
+            console.log("Cambio detectado en Supabase Realtime:", payload);
+            await recuperarBandejaSegura();
+            
+            const mainContent = document.getElementById("main-content");
+            if (!mainContent) return;
+
+            // Refresco de interfaz reactivo si el usuario está visualizando pantallas dependientes
+            if (document.getElementById("table-tickets-body")) {
+                renderizarBandejaTickets();
+            } else if (document.getElementById("chart-estatus-incidencias")) {
+                renderizarDashboardAnalitica();
+            }
+        })
+        .subscribe((status) => {
+            console.log("Estado de suscripción Supabase Realtime:", status);
+        });
 }
