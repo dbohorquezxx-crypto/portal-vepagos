@@ -768,7 +768,7 @@ function destruirModal() {
 }
 
 // ==========================================
-// INTERFAZ 6: DASHBOARD ANALÍTICO EN TIEMPO REAL (CHARTS)
+// INTERFAZ 6: DASHBOARD ANALÍTICO EN TIEMPO REAL (CHARTS) - RESTAURADO ORIGINAL
 // ==========================================
 function renderizarDashboardAnalitica() {
     if (!usuarioLogueado) {
@@ -788,7 +788,8 @@ function renderizarDashboardAnalitica() {
     let btnRegresarId = usuarioLogueado === "admin" ? "btn-dash-regresar-operaciones" : "btn-dash-regresar-tickets";
     let textoBtnRegresar = usuarioLogueado === "admin" ? "⚡ Volver a Carga" : "🎫 Volver a Tickets";
 
-    mainContent.innerHTML = `
+    // RESTAURACIÓN TOTAL: Volvemos a usar tus clases css originales para que la visual recupere su tamaño y orden
+    let contenidoDinamico = `
         <div class="nav-bar-portal">
             <h3 style="margin: 0; font-size: 18px; font-weight: 600;">Dashboard Analítico e Indicadores de Gestión</h3>
             <div style="display:flex; gap:10px;">
@@ -816,31 +817,35 @@ function renderizarDashboardAnalitica() {
             </div>
         </div>
 
-        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px; margin-top:25px; max-width:1200px; margin-left:auto; margin-right:auto; padding:0 20px;">
-            <div class="upload-container" style="margin:0; padding:15px;">
-                <h4 style="margin:0 0 10px 0; font-size:14px; color:#475569;">Distribución de Casos por Estatus</h4>
-                <div style="height:220px; position:relative; display:flex; justify-content:center;"><canvas id="chart-estatus-incidencias"></canvas></div>
+        <div class="dashboard-grid-charts">
+            <div class="chart-card-portal">
+                <h4>Distribución de Casos por Estatus</h4>
+                <div class="chart-container-wrapper"><canvas id="chart-estatus-incidencias"></canvas></div>
             </div>
-            <div class="upload-container" style="margin:0; padding:15px;">
-                <h4 style="margin:0 0 10px 0; font-size:14px; color:#475569;">Volumen de Incidencias Informativo por Banco</h4>
-                <div style="height:220px; position:relative; display:flex; justify-content:center;"><canvas id="chart-volumen-bancos"></canvas></div>
+            <div class="chart-card-portal">
+                <h4>Volumen de Incidencias Informativo por Banco</h4>
+                <div class="chart-container-wrapper"><canvas id="chart-volumen-bancos"></canvas></div>
             </div>
         </div>
 
-        <div style="max-width:1200px; margin: 20px auto; padding: 0 20px;">
-            <div class="upload-container" style="margin:0; padding:15px;">
-                <h4 style="margin:0 0 10px 0; font-size:14px; color:#475569;">Top Causales de Rechazo Frecuentes</h4>
-                <div style="height:200px; position:relative;"><canvas id="chart-top-causales"></canvas></div>
-            </div>
+        <div class="chart-card-portal" style="margin-top: 20px;">
+            <h4>Top Causales de Rechazo Frecuentes</h4>
+            <div style="height: 250px; position: relative;"><canvas id="chart-top-causales"></canvas></div>
         </div>
     `;
 
-    // Destrucción previa obligatoria de instancias de gráficos para evitar superposiciones en renderizados repetidos
+    mainContent.innerHTML = `
+        <div class="portal-main-wrapper" style="padding: 20px; max-width: 1200px; margin: 0 auto;">
+            ${contenidoDinamico}
+        </div>
+    `;
+
+    // Destrucción previa obligatoria de instancias de gráficos
     if (graficoIncidenciasInstance) graficoIncidenciasInstance.destroy();
     if (graficoTopRechazosInstance) graficoTopRechazosInstance.destroy();
     if (graficoVolumenBancosInstance) graficoVolumenBancosInstance.destroy();
 
-    // Inyección de lógicas y procesamiento de arrays de datos para Chart.js
+    // Re-inyección de gráficos con Chart.js
     const ctxEst = document.getElementById("chart-estatus-incidencias");
     if (ctxEst) {
         graficoIncidenciasInstance = new Chart(ctxEst, {
@@ -857,12 +862,12 @@ function renderizarDashboardAnalitica() {
         });
     }
 
-    // Cálculo e indexación de volumen informacional por Banco
     let bancosMap = {};
     bandejaTickets.forEach(t => {
         let b = t.banco || "SIN ASIGNAR";
         bancosMap[b] = (bancosMap[b] || 0) + 1;
     });
+    
     const ctxBancos = document.getElementById("chart-volumen-bancos");
     if (ctxBancos) {
         graficoVolumenBancosInstance = new Chart(ctxBancos, {
@@ -879,7 +884,6 @@ function renderizarDashboardAnalitica() {
         });
     }
 
-    // Agrupación y mapeo de causales de rechazo más repetidas
     let causalesMap = {};
     bandejaTickets.forEach(t => {
         let r = t.motivo_rechazo || "Otras causas";
