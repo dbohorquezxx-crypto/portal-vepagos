@@ -768,7 +768,7 @@ function destruirModal() {
 }
 
 // ==========================================
-// INTERFAZ 6: DASHBOARD ANALÍTICO EN TIEMPO REAL (CHARTS) - RESTAURADO ORIGINAL
+// INTERFAZ 6: DASHBOARD ANALÍTICO EN TIEMPO REAL (CHARTS) - REPARADO ORIGINAL
 // ==========================================
 function renderizarDashboardAnalitica() {
     if (!usuarioLogueado) {
@@ -781,14 +781,14 @@ function renderizarDashboardAnalitica() {
     if (!mainContent) return;
 
     let totalGlobal = bandejaTickets.length;
-    let pendientes = bandejaTickets.filter(t => t.estatus === 'PENDIENTE').length;
-    let resueltos = bandejaTickets.filter(t => t.estatus === 'RESUELTO').length;
+    let pendientes = bandejaTickets.filter(t => String(t.estatusTicket).toUpperCase().trim() === 'PENDIENTE').length;
+    let resueltos = bandejaTickets.filter(t => String(t.estatusTicket).toUpperCase().trim() === 'FINALIZADO' || String(t.estatusTicket).toUpperCase().trim() === 'CORREGIDO').length;
     let ratioEfectividad = totalGlobal > 0 ? Math.round((resueltos / totalGlobal) * 100) : 0;
 
     let btnRegresarId = usuarioLogueado === "admin" ? "btn-dash-regresar-operaciones" : "btn-dash-regresar-tickets";
     let textoBtnRegresar = usuarioLogueado === "admin" ? "⚡ Volver a Carga" : "🎫 Volver a Tickets";
 
-    // RESTAURACIÓN TOTAL: Volvemos a usar tus clases css originales para que la visual recupere su tamaño y orden
+    // Mantenemos la estructura HTML original intacta con la Grid de 2 columnas original
     let contenidoDinamico = `
         <div class="nav-bar-portal">
             <h3 style="margin: 0; font-size: 18px; font-weight: 600;">Dashboard Analítico e Indicadores de Gestión</h3>
@@ -817,20 +817,20 @@ function renderizarDashboardAnalitica() {
             </div>
         </div>
 
-        <div class="dashboard-grid-charts">
+        <div class="dashboard-grid-charts" id="graficaEstatus">
             <div class="chart-card-portal">
                 <h4>Distribución de Casos por Estatus</h4>
-                <div class="chart-container-wrapper"><canvas id="chart-estatus-incidencias"></canvas></div>
+                <div style="height: 220px; position: relative;"><canvas id="chart-estatus-incidencias"></canvas></div>
             </div>
             <div class="chart-card-portal">
                 <h4>Volumen de Incidencias Informativo por Banco</h4>
-                <div class="chart-container-wrapper"><canvas id="chart-volumen-bancos"></canvas></div>
+                <div style="height: 220px; position: relative;"><canvas id="chart-volumen-bancos"></canvas></div>
             </div>
         </div>
 
         <div class="chart-card-portal" style="margin-top: 20px;">
             <h4>Top Causales de Rechazo Frecuentes</h4>
-            <div style="height: 250px; position: relative;"><canvas id="chart-top-causales"></canvas></div>
+            <div style="height: 240px; position: relative;"><canvas id="chart-top-causales"></canvas></div>
         </div>
     `;
 
@@ -840,12 +840,12 @@ function renderizarDashboardAnalitica() {
         </div>
     `;
 
-    // Destrucción previa obligatoria de instancias de gráficos
+    // Limpieza segura de instancias previas de Chart.js para evitar solapamiento
     if (graficoIncidenciasInstance) graficoIncidenciasInstance.destroy();
     if (graficoTopRechazosInstance) graficoTopRechazosInstance.destroy();
     if (graficoVolumenBancosInstance) graficoVolumenBancosInstance.destroy();
 
-    // Re-inyección de gráficos con Chart.js
+    // 1. Gráfico de Rosca (Estatus)
     const ctxEst = document.getElementById("chart-estatus-incidencias");
     if (ctxEst) {
         graficoIncidenciasInstance = new Chart(ctxEst, {
@@ -862,6 +862,7 @@ function renderizarDashboardAnalitica() {
         });
     }
 
+    // 2. Gráfico de Torta (Bancos - Solo fines informativos para reflejar la gráfica)
     let bancosMap = {};
     bandejaTickets.forEach(t => {
         let b = t.banco || "SIN ASIGNAR";
@@ -884,14 +885,15 @@ function renderizarDashboardAnalitica() {
         });
     }
 
+    // 3. Gráfico de Barras (Causales)
     let causalesMap = {};
     bandejaTickets.forEach(t => {
-        let r = t.motivo_rechazo || "Otras causas";
+        let r = t.motivo || "Otras causas";
         if (r.includes("|")) {
             let split = r.split("|");
             split.forEach(s => {
                 let sL = s.trim();
-                causalesMap[sL] = (causalesMap[sL] || 0) + 1;
+                if(sL) causalesMap[sL] = (causalesMap[sL] || 0) + 1;
             });
         } else {
             causalesMap[r] = (causalesMap[r] || 0) + 1;
@@ -921,8 +923,9 @@ function renderizarDashboardAnalitica() {
         });
     }
 
+    // Eventos de los botones de navegación
     const btnTickets = document.getElementById("btn-dash-regresar-tickets");
-    const btnOperaciones = document.getElementById("btn-dash-regresar-operaciones");
+    const btnOperaciones = document.getElementById(btnRegresarId);
 
     if (btnTickets) btnTickets.addEventListener("click", renderizarBandejaTickets);
     if (btnOperaciones) {
@@ -930,8 +933,7 @@ function renderizarDashboardAnalitica() {
             if (usuarioLogueado === "admin") {
                 inicializarModuloCarga();
             } else {
-                alert("Acceso exclusivo para administradores.");
-                renderizarPantallaLogin();
+                renderizarBandejaTickets();
             }
         });
     }
