@@ -928,6 +928,7 @@ function renderizarDashboardAnalitica() {
 }
 
 // ==========================================
+// ==========================================
 // FUNCIÓN DE DESCARGA (RESPALDO OBLIGATORIO)
 // ==========================================
 function descargarExcelAprobados() {
@@ -939,7 +940,7 @@ function descargarExcelAprobados() {
         const worksheet = XLSX.utils.json_to_sheet(casosFiltradosAprobados);
         const workbook = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(workbook, worksheet, "Aprobados");
-        XLSX.writeFile(workbook, "Reporte_Conciliado_Aprobados.xlsx");
+        XLSX.writeFile(workbook, "Reporte_Conciliado_Aprobados.xlsx"); // <-- Asegúrate de que cierre así
     } catch(excelErr) {
         console.error("Error generando archivo Excel local:", excelErr);
     }
