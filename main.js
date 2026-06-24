@@ -419,7 +419,7 @@ async function ejecutarCruceYValidacion() {
                 }
 
                 // ==================================================================
-                // BLOQUE APLICADO: AJUSTE EXCLUSIVO DE CRUCE DE MODELOS UNIVERSAL
+                // CRUCIAL: REGLA DE NEGOCIO - CRUCE DE MODELOS UNIVERSAL SANEADO
                 // ==================================================================
                 if (pareoExitoso) {
                     const activoInventario = inventarioMap.get(comercioNormalizado);
@@ -428,12 +428,10 @@ async function ejecutarCruceYValidacion() {
                     const modeloBaseLimpio = String(modeloValue).replace(/\s+/g, ' ').toUpperCase().trim();
                     const modeloInvLimpio = String(modeloInventario).replace(/\s+/g, ' ').toUpperCase().trim();
                     
-                    // Validación global de discrepancia para mitigar falsos positivos en cualquier modelo
                     if (modeloBaseLimpio !== modeloInvLimpio) {
                         detallesRechazo.push(`Discrepancia de Modelo: El archivo base indica modelo '${modeloValue}' pero el inventario registra '${modeloInventario}'`);
                     }
                     
-                    // Consistencia innegociable de hardware del modelo 9220 que inicia con 9222
                     if (modeloBaseLimpio.includes("9220") && !String(serialAsignado).startsWith("9222")) {
                         detallesRechazo.push("Consistencia de Modelo/Serial: El serial debe iniciar numéricamente con '9222'");
                     }
@@ -503,7 +501,7 @@ async function ejecutarCruceYValidacion() {
                             modelo: modeloValue,
                             serial_equipo: identificadorSerial,
                             sim_card: simcardAsignada,
-                            banco: bancoValue, // No interviene en el cruce de datos, se usa únicamente para gráficos informativos en el Dashboard
+                            banco: bancoValue,
                             motivo_rechazo: detalleReglaTexto,
                             estatus: 'PENDIENTE',
                             auditoria_observacion: ''
@@ -766,7 +764,7 @@ function destruirModal() {
 }
 
 // ==========================================
-// INTERFAZ 6: DASHBOARD ANALÍTICO EN TIEMPO REAL (CHARTS) - ORIGINAL INTACTO
+// INTERFAZ 6: DASHBOARD ANALÍTICO EN TIEMPO REAL (CHARTS)
 // ==========================================
 function renderizarDashboardAnalitica() {
     if (!usuarioLogueado) {
